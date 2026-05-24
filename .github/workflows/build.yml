@@ -65,7 +65,17 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
+
+      - name: Cache Gradle packages
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Make gradlew executable
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
@@ -128,3 +138,48 @@ jobs:
         with:
           name: release-apk-${{ steps.tag.outputs.tag }}
           path: app/build/outputs/apk/release/*.apk
+
+      - name: Clean old Gradle caches
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking Gradle caches..."
+          CACHES=$(gh api repos/${{ github.repository }}/actions/caches --jq '.actions_caches[] | select(.key | startswith("gradle-")) | .id' | head -n -2)
+          if [ -n "$CACHES" ]; then
+            COUNT=$(echo "$CACHES" | wc -l)
+            echo "Deleting $COUNT old cache(s)..."
+            echo "$CACHES" | while read -r id; do
+              gh api --method DELETE repos/${{ github.repository }}/actions/caches/$id || true
+            done
+            echo "Done."
+          else
+            echo "No old caches to delete."
+          fi
+
+      - name: Clean old releases (keep latest 10)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking releases..."
+          OLD_RELEASES=$(gh api repos/${{ github.repository }}/releases --paginate --jq '.[10:] | .[].id')
+          if [ -n "$OLD_RELEASES" ]; then
+            COUNT=$(echo "$OLD_RELEASES" | wc -l)
+            echo "Deleting $COUNT old release(s)..."
+            echo "$OLD_RELEASES" | while read -r id; do
+              gh api --method DELETE repos/${{ github.repository }}/releases/$id || true
+            done
+            echo "Done."
+          else
+            echo "No old releases to delete."
+          fi
+
+          # 同时删除旧的 release tags
+          OLD_TAGS=$(git tag -l 'v*' --sort=-v:refname | tail -n +11)
+          if [ -n "$OLD_TAGS" ]; then
+            echo "Deleting old tags: $OLD_TAGS"
+            for TAG in $OLD_TAGS; do
+              git push --delete origin "$TAG" 2>/dev/null || true
+            done
+          fi
