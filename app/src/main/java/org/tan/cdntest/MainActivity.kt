@@ -23,7 +23,6 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -179,7 +178,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, CdnSnifferActivity::class.java))
         }
         findViewById<ImageButton>(R.id.btnMore).setOnClickListener {
-            showMoreMenu(it)
+            startActivity(Intent(this, MoreActivity::class.java))
         }
         findViewById<ImageButton>(R.id.btnRefresh).setOnClickListener {
             webView.reload()
@@ -226,18 +225,6 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("关闭", null)
             .show()
-    }
-
-    private fun showMoreMenu(anchor: View) {
-        val popup = PopupMenu(this, anchor)
-        popup.menu.add(0, 1, 0, "更多设置")
-        popup.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                1 -> startActivity(Intent(this, MoreActivity::class.java))
-            }
-            true
-        }
-        popup.show()
     }
 
     private fun setupBackNavigation() {

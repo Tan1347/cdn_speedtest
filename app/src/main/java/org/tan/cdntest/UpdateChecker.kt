@@ -20,6 +20,11 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.X509TrustManager
+import java.security.cert.X509Certificate
 
 data class ReleaseInfo(
     val tagName: String,
@@ -31,8 +36,8 @@ data class ReleaseInfo(
 class UpdateChecker(private val activity: Activity) {
 
     companion object {
-        private const val GITHUB_API =
-            "https://api.github.com/repos/Tan1347/cdn_speedtest/releases/latest"
+        private const val REPO = "Tan1347/cdn_speedtest"
+        private const val GITHUB_API = "https://api.github.com/repos/$REPO/releases/latest"
     }
 
     private val executor = Executors.newSingleThreadExecutor()
@@ -54,56 +59,201 @@ class UpdateChecker(private val activity: Activity) {
 
     fun checkForUpdate(onResult: (ReleaseInfo?) -> Unit) {
         executor.execute {
-            try {
-                AppLogger.i(activity, "UpdateChecker", "检查更新...")
-                val url = URL(GITHUB_API)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                conn.setRequestProperty("User-Agent", "CDNViewer-Android")
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
+            AppLogger.i(activity, "UpdateChecker", "检查更新...")
 
-                if (conn.responseCode == 200) {
-                    val json = conn.inputStream.bufferedReader().readText()
-                    val obj = JSONObject(json)
-                    val tagName = obj.getString("tag_name")
-                    val body = obj.optString("body", "")
+            // 使用优选排序后的镜像列表
+            val apiMirrors = GitHubHostsHelper.getSortedApiMirrors(activity)
+            AppLogger.d(activity, "UpdateChecker", "镜像排序: $apiMirrors")
 
-                    val assets = obj.getJSONArray("assets")
-                    var apkUrl = ""
-                    var apkSize = 0L
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        if (asset.getString("name").endsWith(".apk")) {
-                            apkUrl = asset.getString("browser_download_url")
-                            apkSize = asset.optLong("size", 0L)
-                            break
+            for ((index, mirror) in apiMirrors.withIndex()) {
+                try {
+                    val apiUrl = "${mirror}${GITHUB_API}"
+                    AppLogger.d(activity, "UpdateChecker", "尝试 API 源 $index: $apiUrl")
+
+                    val url = URL(apiUrl)
+                    val conn = url.openConnection() as HttpURLConnection
+                    conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    conn.setRequestProperty("User-Agent", "CDNViewer-Android")
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 8000
+
+                    if (conn.responseCode == 200) {
+                        val json = conn.inputStream.bufferedReader().readText()
+                        conn.disconnect()
+                        val release = parseReleaseJson(json)
+                        if (release != null) {
+                            val currentVersion = getCurrentVersion()
+                            if (release.tagName != currentVersion) {
+                                // 为下载链接生成镜像代理版本
+                                val optimized = optimizeDownloadUrl(release)
+                                AppLogger.i(activity, "UpdateChecker", "发现新版本: ${release.tagName} (当前: $currentVersion)")
+                                mainHandler.post { onResult(optimized) }
+                            } else {
+                                AppLogger.i(activity, "UpdateChecker", "已是最新版本: $currentVersion")
+                                mainHandler.post { onResult(null) }
+                            }
+                            return@execute
                         }
                     }
-
                     conn.disconnect()
-
-                    if (apkUrl.isNotEmpty()) {
-                        val release = ReleaseInfo(tagName, body, apkUrl, apkSize)
-                        val currentVersion = getCurrentVersion()
-                        if (tagName != currentVersion) {
-                            AppLogger.i(activity, "UpdateChecker", "发现新版本: $tagName (当前: $currentVersion)")
-                            mainHandler.post { onResult(release) }
-                        } else {
-                            AppLogger.i(activity, "UpdateChecker", "已是最新版本: $currentVersion")
-                            mainHandler.post { onResult(null) }
-                        }
-                    } else {
-                        mainHandler.post { onResult(null) }
-                    }
-                } else {
-                    conn.disconnect()
-                    mainHandler.post { onResult(null) }
+                } catch (e: Exception) {
+                    AppLogger.w(activity, "UpdateChecker", "API 源 $index 失败: ${e.message}")
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                mainHandler.post { onResult(null) }
             }
+
+            // 所有镜像失败，尝试从远程 hosts 获取 GitHub IP 直连
+            AppLogger.w(activity, "UpdateChecker", "镜像全部失败，尝试从远程 hosts 获取 IP 直连...")
+            val release = tryDirectWithRemoteHosts()
+            if (release != null) {
+                val currentVersion = getCurrentVersion()
+                if (release.tagName != currentVersion) {
+                    val optimized = optimizeDownloadUrl(release)
+                    AppLogger.i(activity, "UpdateChecker", "远程 hosts 直连成功: ${release.tagName}")
+                    mainHandler.post { onResult(optimized) }
+                    return@execute
+                } else {
+                    mainHandler.post { onResult(null) }
+                    return@execute
+                }
+            }
+
+            AppLogger.e(activity, "UpdateChecker", "所有更新源均失败")
+            mainHandler.post { onResult(null) }
+        }
+    }
+
+    private fun parseReleaseJson(json: String): ReleaseInfo? {
+        return try {
+            val obj = JSONObject(json)
+            val tagName = obj.getString("tag_name")
+            val body = obj.optString("body", "")
+
+            val assets = obj.getJSONArray("assets")
+            var apkUrl = ""
+            var apkSize = 0L
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                if (asset.getString("name").endsWith(".apk")) {
+                    apkUrl = asset.getString("browser_download_url")
+                    apkSize = asset.optLong("size", 0L)
+                    break
+                }
+            }
+
+            if (apkUrl.isNotEmpty()) ReleaseInfo(tagName, body, apkUrl, apkSize)
+            else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * 将 GitHub 原始下载链接替换为镜像代理链接，提升国内下载成功率
+     */
+    private fun optimizeDownloadUrl(release: ReleaseInfo): ReleaseInfo {
+        val originalUrl = release.apkUrl
+        if (!originalUrl.contains("github.com") && !originalUrl.contains("githubusercontent.com")) {
+            return release
+        }
+        // 使用优选排序后的第一个代理镜像
+        val downloadMirrors = GitHubHostsHelper.getSortedDownloadMirrors(activity)
+        val mirrorPrefix = downloadMirrors.firstOrNull() ?: "https://ghfast.top/"
+        val proxiedUrl = "$mirrorPrefix$originalUrl"
+        AppLogger.d(activity, "UpdateChecker", "下载链接代理: $proxiedUrl")
+        return release.copy(apkUrl = proxiedUrl)
+    }
+
+    /**
+     * 所有镜像失败时，从远程 hosts 获取 GitHub IP，通过 SSLSocket 直连 API
+     */
+    private fun tryDirectWithRemoteHosts(): ReleaseInfo? {
+        return try {
+            // 1. 获取远程 hosts
+            val remoteHosts = GitHubHostsHelper.fetchRemoteHosts(activity)
+            if (remoteHosts.isEmpty()) {
+                AppLogger.w(activity, "UpdateChecker", "远程 hosts 获取失败或为空")
+                return null
+            }
+            AppLogger.i(activity, "UpdateChecker", "远程 hosts 获取成功，${remoteHosts.size} 条记录")
+
+            // 2. 找到 api.github.com 或 github.com 的 IP
+            val apiIp = remoteHosts["api.github.com"]
+                ?: remoteHosts["github.com"]
+                ?: return null
+
+            // 3. 测试 IP 延迟
+            val latency = GitHubHostsHelper.testIp(apiIp)
+            if (latency == Long.MAX_VALUE) {
+                AppLogger.w(activity, "UpdateChecker", "远程 hosts IP 不可达: $apiIp")
+                return null
+            }
+            AppLogger.i(activity, "UpdateChecker", "远程 hosts IP: $apiIp, 延迟: ${latency}ms")
+
+            // 4. 通过 SSLSocket 直连
+            val apiPath = "/repos/$REPO/releases/latest"
+            val response = httpsGetWithIp(apiIp, "api.github.com", apiPath)
+            if (response != null) {
+                parseReleaseJson(response)
+            } else null
+        } catch (e: Exception) {
+            AppLogger.w(activity, "UpdateChecker", "远程 hosts 直连失败: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * 通过 SSLSocket 使用指定 IP 发起 HTTPS GET 请求
+     */
+    private fun httpsGetWithIp(ip: String, host: String, path: String): String? {
+        var socket: SSLSocket? = null
+        try {
+            val trustAll = arrayOf<X509TrustManager>(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+            })
+
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAll, java.security.SecureRandom())
+            val factory = sslContext.socketFactory
+
+            socket = factory.createSocket(ip, 443) as SSLSocket
+            socket.soTimeout = 8000
+            socket.startHandshake()
+
+            val request = buildString {
+                append("GET $path HTTP/1.1\r\n")
+                append("Host: $host\r\n")
+                append("Accept: application/vnd.github.v3+json\r\n")
+                append("User-Agent: CDNViewer-Android\r\n")
+                append("Connection: close\r\n")
+                append("\r\n")
+            }
+
+            socket.outputStream.write(request.toByteArray())
+            socket.outputStream.flush()
+
+            val reader = socket.inputStream.bufferedReader()
+            val statusLine = reader.readLine() ?: return null
+            if (!statusLine.contains("200")) return null
+
+            // 跳过 headers
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                if (line.isNullOrEmpty()) break
+            }
+
+            // 读取 body
+            val body = StringBuilder()
+            while (reader.readLine().also { line = it } != null) {
+                body.append(line)
+            }
+            return body.toString().ifEmpty { null }
+        } catch (e: Exception) {
+            AppLogger.w(activity, "UpdateChecker", "SSLSocket 请求失败: ${e.message}")
+            return null
+        } finally {
+            try { socket?.close() } catch (_: Exception) {}
         }
     }
 
@@ -129,11 +279,21 @@ class UpdateChecker(private val activity: Activity) {
     }
 
     private var destFile: File? = null
+    private var originalDownloadUrl: String = ""
+    private var mirrorIndex: Int = 0
+    private var downloadTotalSize: Long = 0
 
     private fun startDownload(apkUrl: String, totalSize: Long) {
         if (isDownloading) return
         isDownloading = true
 
+        originalDownloadUrl = apkUrl
+        mirrorIndex = 0
+        downloadTotalSize = totalSize
+        enqueueDownload(apkUrl, totalSize)
+    }
+
+    private fun enqueueDownload(apkUrl: String, totalSize: Long) {
         showProgressDialog()
         AppLogger.i(activity, "UpdateChecker", "开始下载更新: $apkUrl")
 
@@ -152,6 +312,39 @@ class UpdateChecker(private val activity: Activity) {
 
         pollProgress(dm, totalSize)
         registerDownloadComplete(dm)
+    }
+
+    /**
+     * 下载失败时尝试下一个镜像源
+     */
+    private fun retryWithNextMirror() {
+        mirrorIndex++
+        val downloadMirrors = GitHubHostsHelper.getSortedDownloadMirrors(activity)
+        if (mirrorIndex < downloadMirrors.size) {
+            val nextMirror = downloadMirrors[mirrorIndex]
+            // 从原始 URL 中提取 github 路径部分
+            val githubPath = originalDownloadUrl
+                .replace("https://ghfast.top/", "")
+                .replace("https://ghproxy.net/", "")
+                .replace("https://github.moeyy.xyz/", "")
+            val nextUrl = "$nextMirror$githubPath"
+            AppLogger.w(activity, "UpdateChecker", "下载失败，切换到镜像源 $mirrorIndex: $nextUrl")
+            mainHandler.post {
+                progressText?.text = "下载失败，正在切换镜像源..."
+            }
+            // 短暂延迟后重试
+            mainHandler.postDelayed({
+                enqueueDownload(nextUrl, downloadTotalSize)
+            }, 1500)
+        } else {
+            AppLogger.e(activity, "UpdateChecker", "所有下载镜像均失败")
+            mainHandler.post {
+                isDownloading = false
+                progressDialog?.dismiss()
+                progressDialog = null
+                android.widget.Toast.makeText(activity, "下载失败，请检查网络后重试", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun showProgressDialog() {
@@ -201,11 +394,7 @@ class UpdateChecker(private val activity: Activity) {
 
                     if (status == DownloadManager.STATUS_FAILED) {
                         isDownloading = false
-                        mainHandler.post {
-                            progressDialog?.dismiss()
-                            progressDialog = null
-                            android.widget.Toast.makeText(activity, "下载失败", android.widget.Toast.LENGTH_SHORT).show()
-                        }
+                        retryWithNextMirror()
                         return
                     }
 

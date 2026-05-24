@@ -54,6 +54,10 @@
             android:name=".DownloadManagerActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".HostsTestActivity"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

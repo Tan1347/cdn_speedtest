@@ -82,7 +82,7 @@ class AppLogger(
     private val executor = Executors.newSingleThreadExecutor()
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
-    private val fileTimeFormat = SimpleDateFormat("HHmmss", Locale.getDefault())
+    private val fileTimeFormat = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.getDefault())
 
     private var logDir: File? = null
     private var currentLogFile: File? = null

@@ -56,6 +56,7 @@ class MoreActivity : AppCompatActivity() {
         setupLogSection()
         setupDownloadDirSection()
         setupDownloadEngineSection()
+        setupHostsSection()
         setupVersionSection()
     }
 
@@ -64,6 +65,7 @@ class MoreActivity : AppCompatActivity() {
         refreshUaDisplay()
         refreshDirDisplay()
         refreshEngineDisplay()
+        refreshHostsStatus(findViewById(R.id.tvHostsStatus))
     }
 
     // --- UA ---
@@ -275,6 +277,34 @@ class MoreActivity : AppCompatActivity() {
             val useSystem = checkedId == R.id.rbSystemEngine
             DownloadHelper.setUseSystemEngine(this, useSystem)
             Toast.makeText(this, if (useSystem) "已切换到系统下载器" else "已切换到应用内下载器", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // --- Hosts ---
+    private fun setupHostsSection() {
+        val tvHostsStatus = findViewById<TextView>(R.id.tvHostsStatus)
+        val btnHostsTest = findViewById<MaterialButton>(R.id.btnHostsTest)
+
+        refreshHostsStatus(tvHostsStatus)
+
+        btnHostsTest.setOnClickListener {
+            startActivity(Intent(this, HostsTestActivity::class.java))
+        }
+    }
+
+    private fun refreshHostsStatus(tv: TextView) {
+        val lastTime = GitHubHostsHelper.getLastTestTime(this)
+        if (lastTime > 0 && GitHubHostsHelper.isCacheValid(this)) {
+            val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(lastTime))
+            tv.text = "上次测试: $date (有效)"
+            tv.setTextColor(getColor(R.color.accent))
+        } else if (lastTime > 0) {
+            tv.text = "上次测试结果已过期，建议重新测试"
+            tv.setTextColor(getColor(R.color.text_secondary))
+        } else {
+            tv.text = "尚未测试"
+            tv.setTextColor(getColor(R.color.text_secondary))
         }
     }
 
