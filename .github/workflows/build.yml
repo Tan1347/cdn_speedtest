@@ -1,0 +1,82 @@
+name: Weekly Build Check
+
+on:
+  schedule:
+    - cron: '0 16 * * 2'  # 每周二 UTC 16:00 = 北京时间 周三 00:00
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if build needed
+        id: check
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "Current HEAD: $HEAD_SHA"
+
+          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing release found, build needed"
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TAG_SHA=$(git rev-parse "$LATEST_TAG^{}" 2>/dev/null || git rev-parse "$LATEST_TAG")
+          echo "Latest release tag: $LATEST_TAG ($TAG_SHA)"
+
+          if [ "$HEAD_SHA" = "$TAG_SHA" ]; then
+            echo "Latest commit already released, skipping build"
+            echo "need_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New commits found, build needed"
+            echo "need_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.check.outputs.need_build == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        if: steps.check.outputs.need_build == 'true'
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Release APK
+        if: steps.check.outputs.need_build == 'true'
+        run: ./gradlew assembleRelease
+
+      - name: Get version info
+        if: steps.check.outputs.need_build == 'true'
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TAG="v${VERSION_NAME}-${SHORT_SHA}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        if: steps.check.outputs.need_build == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "v${{ steps.version.outputs.version_name }}"
+          body: |
+            Automatic weekly build
+            - Commit: ${{ steps.check.outputs.head_sha }}
+            - Built: ${{ steps.version.outputs.version }}
+          files: app/build/outputs/apk/release/*.apk
+          draft: false
+          prerelease: false

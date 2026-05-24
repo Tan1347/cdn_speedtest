@@ -1,0 +1,39 @@
+# Built outputs
+*.iml
+.gradle
+/build
+/app/build
+/app/release
+/local.properties
+
+# IDE
+/.idea
+.vscode/
+.claude/
+.DS_Store
+
+# Signing (privacy sensitive)
+*.jks
+*.keystore
+*.pem
+*.p12
+keystore.properties
+
+# Environment / config
+.env
+.env.*
+*.local
+signing.properties
+
+# APK / AAB
+*.apk
+*.aab
+
+# Native build
+.externalNativeBuild
+.cxx
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
