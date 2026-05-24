@@ -3,6 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_sniffer"
+        android:icon="@drawable/ic_sniffer"
+        android:title="CDN嗅探"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/action_more"
         android:icon="@drawable/ic_more"
         android:title="更多"

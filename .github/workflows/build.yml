@@ -3,6 +3,7 @@ name: Weekly Build Check
 on:
   schedule:
     - cron: '0 16 * * 2'  # 每周二 UTC 16:00 = 北京时间 周三 00:00
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -41,42 +42,56 @@ jobs:
             echo "need_build=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up JDK 17
+      - name: Check if release tag exists
         if: steps.check.outputs.need_build == 'true'
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        if: steps.check.outputs.need_build == 'true'
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Build Release APK
-        if: steps.check.outputs.need_build == 'true'
-        run: ./gradlew assembleRelease
-
-      - name: Get version info
-        if: steps.check.outputs.need_build == 'true'
-        id: version
+        id: tag
         run: |
           VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
           SHORT_SHA=$(git rev-parse --short HEAD)
           TAG="v${VERSION_NAME}-${SHORT_SHA}"
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists, skipping"
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 17
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Make gradlew executable
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        run: chmod +x ./gradlew
+
+      - name: Build Release APK
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        run: ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Create Release
-        if: steps.check.outputs.need_build == 'true'
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: "v${{ steps.version.outputs.version_name }}"
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "v${{ steps.tag.outputs.version_name }}"
           body: |
             Automatic weekly build
             - Commit: ${{ steps.check.outputs.head_sha }}
-            - Built: ${{ steps.version.outputs.version }}
+            - Tag: ${{ steps.tag.outputs.tag }}
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
+
+      - name: Upload APK artifact
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-${{ steps.tag.outputs.tag }}
+          path: app/build/outputs/apk/release/*.apk

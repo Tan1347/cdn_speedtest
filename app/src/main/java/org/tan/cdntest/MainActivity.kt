@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (savedInstanceState == null) {
-            webView.loadUrl("https://tan1347.github.io/")
+            webView.loadUrl("https://speedtest.2026524.xyz/")
         } else {
             webView.restoreState(savedInstanceState)
         }
@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
-                if (url.startsWith("https://tan1347.github.io/") || url.startsWith("http://tan1347.github.io/")) {
+                if (url.startsWith("https://speedtest.2026524.xyz/") || url.startsWith("http://speedtest.2026524.xyz/")) {
                     return false
                 }
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -149,6 +149,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_sniffer -> {
+                startActivity(Intent(this, CdnSnifferActivity::class.java))
+                true
+            }
             R.id.action_more -> {
                 startActivity(Intent(this, MoreActivity::class.java))
                 true

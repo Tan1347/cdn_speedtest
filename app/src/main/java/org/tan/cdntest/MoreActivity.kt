@@ -1,5 +1,6 @@
 package org.tan.cdntest
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.TextView
@@ -65,6 +66,10 @@ class MoreActivity : AppCompatActivity() {
                     tvUpdateStatus.setTextColor(getColor(R.color.text_secondary))
                 }
             }
+        }
+
+        findViewById<MaterialButton>(R.id.btnDownloadManager).setOnClickListener {
+            startActivity(Intent(this, DownloadManagerActivity::class.java))
         }
     }
 }

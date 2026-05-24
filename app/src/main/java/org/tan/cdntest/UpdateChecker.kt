@@ -9,14 +9,15 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.FileProvider
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -132,12 +133,14 @@ class UpdateChecker(private val activity: Activity) {
         showProgressDialog()
 
         val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val fileName = "cdnviewer-update-${System.currentTimeMillis()}.apk"
+        val fileName = "speedtest-update-${System.currentTimeMillis()}.apk"
+        val downloadDir = DownloadHelper.getDownloadDir(activity)
+        val destFile = File(downloadDir, fileName)
         val request = DownloadManager.Request(Uri.parse(apkUrl))
             .setTitle("网速测试 更新")
             .setDescription("正在下载新版本...")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+            .setDestinationUri(Uri.fromFile(destFile))
             .setMimeType("application/vnd.android.package-archive")
 
         downloadId = dm.enqueue(request)
@@ -243,8 +246,13 @@ class UpdateChecker(private val activity: Activity) {
     }
 
     private fun installApk(uri: Uri) {
+        val contentUri = FileProvider.getUriForFile(
+            activity,
+            "${activity.packageName}.fileprovider",
+            File(DownloadHelper.getDownloadDir(activity), uri.lastPathSegment ?: "update.apk")
+        )
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
+            setDataAndType(contentUri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
