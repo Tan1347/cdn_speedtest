@@ -55,6 +55,7 @@ class UpdateChecker(private val activity: Activity) {
     fun checkForUpdate(onResult: (ReleaseInfo?) -> Unit) {
         executor.execute {
             try {
+                AppLogger.i(activity, "UpdateChecker", "检查更新...")
                 val url = URL(GITHUB_API)
                 val conn = url.openConnection() as HttpURLConnection
                 conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
@@ -86,8 +87,10 @@ class UpdateChecker(private val activity: Activity) {
                         val release = ReleaseInfo(tagName, body, apkUrl, apkSize)
                         val currentVersion = getCurrentVersion()
                         if (tagName != currentVersion) {
+                            AppLogger.i(activity, "UpdateChecker", "发现新版本: $tagName (当前: $currentVersion)")
                             mainHandler.post { onResult(release) }
                         } else {
+                            AppLogger.i(activity, "UpdateChecker", "已是最新版本: $currentVersion")
                             mainHandler.post { onResult(null) }
                         }
                     } else {
@@ -132,6 +135,7 @@ class UpdateChecker(private val activity: Activity) {
         isDownloading = true
 
         showProgressDialog()
+        AppLogger.i(activity, "UpdateChecker", "开始下载更新: $apkUrl")
 
         val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val fileName = "speedtest-update-${System.currentTimeMillis()}.apk"
@@ -225,6 +229,7 @@ class UpdateChecker(private val activity: Activity) {
         mainHandler.postDelayed(runnable, 500)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun registerDownloadComplete(dm: DownloadManager) {
         downloadReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
@@ -236,6 +241,7 @@ class UpdateChecker(private val activity: Activity) {
                     } catch (_: Exception) {}
                     downloadReceiver = null
 
+                    AppLogger.i(activity, "UpdateChecker", "更新下载完成")
                     mainHandler.post {
                         progressDialog?.dismiss()
                         progressDialog = null

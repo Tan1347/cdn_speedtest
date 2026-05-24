@@ -41,6 +41,8 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.init(this)
+        AppLogger.i(this, "MainActivity", "应用启动")
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
@@ -108,6 +110,7 @@ class MainActivity : AppCompatActivity() {
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            @Suppress("DEPRECATION")
             databaseEnabled = true
             allowFileAccess = false
             mediaPlaybackRequiresUserGesture = true
@@ -133,6 +136,7 @@ class MainActivity : AppCompatActivity() {
                 progressBar.visibility = View.GONE
                 etUrl.setText(url)
                 updateCertIcon(url)
+                AppLogger.i(this@MainActivity, "MainActivity", "页面加载完成: $url")
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -144,6 +148,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
                 hasSslError = true
+                AppLogger.w(this@MainActivity, "MainActivity", "SSL证书错误: ${error.url}")
                 handler.proceed()
             }
         }
@@ -261,5 +266,10 @@ class MainActivity : AppCompatActivity() {
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
         super.onRestoreInstanceState(savedInstanceState)
         webView.restoreState(savedInstanceState)
+    }
+
+    override fun onDestroy() {
+        AppLogger.flush()
+        super.onDestroy()
     }
 }

@@ -4,10 +4,12 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import com.google.android.material.switchmaterial.SwitchMaterial
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
@@ -51,6 +53,7 @@ class MoreActivity : AppCompatActivity() {
 
         setupUaSection()
         setupSearchEngineSection()
+        setupLogSection()
         setupDownloadDirSection()
         setupDownloadEngineSection()
         setupVersionSection()
@@ -203,6 +206,46 @@ class MoreActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    // --- Log Settings ---
+    private fun setupLogSection() {
+        val switchLog = findViewById<SwitchMaterial>(R.id.switchLog)
+        val layoutLogLevel = findViewById<View>(R.id.layoutLogLevel)
+        val rgLogLevel = findViewById<RadioGroup>(R.id.rgLogLevel)
+        val tvLogDir = findViewById<TextView>(R.id.tvLogDir)
+
+        val enabled = AppLogger.isEnabled(this)
+        switchLog.isChecked = enabled
+        layoutLogLevel.visibility = if (enabled) View.VISIBLE else View.GONE
+
+        switchLog.setOnCheckedChangeListener { _: CompoundButton, isChecked: Boolean ->
+            AppLogger.setEnabled(this, isChecked)
+            layoutLogLevel.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        val level = AppLogger.getLevel(this)
+        rgLogLevel.check(when (level) {
+            AppLogger.Level.DEBUG -> R.id.rbDebug
+            AppLogger.Level.INFO -> R.id.rbInfo
+            AppLogger.Level.WARN -> R.id.rbWarn
+            AppLogger.Level.ERROR -> R.id.rbError
+        })
+
+        rgLogLevel.setOnCheckedChangeListener { _, checkedId ->
+            val newLevel = when (checkedId) {
+                R.id.rbDebug -> AppLogger.Level.DEBUG
+                R.id.rbInfo -> AppLogger.Level.INFO
+                R.id.rbWarn -> AppLogger.Level.WARN
+                R.id.rbError -> AppLogger.Level.ERROR
+                else -> AppLogger.Level.INFO
+            }
+            AppLogger.setLevel(this, newLevel)
+            Toast.makeText(this, "日志等级: ${newLevel.tag}", Toast.LENGTH_SHORT).show()
+        }
+
+        val logDir = java.io.File(getExternalFilesDir(null), "log")
+        tvLogDir.text = "日志目录: ${logDir.absolutePath}"
     }
 
     // --- Download Directory ---

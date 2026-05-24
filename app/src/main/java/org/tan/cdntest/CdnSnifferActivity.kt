@@ -52,6 +52,8 @@ class CdnSnifferActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLogger.init(this)
+        AppLogger.i(this, "CdnSniffer", "嗅探页面启动")
         setContentView(R.layout.activity_cdn_sniffer)
 
         etUrl = findViewById(R.id.etUrl)
@@ -89,6 +91,7 @@ class CdnSnifferActivity : AppCompatActivity() {
             builtInZoomControls = true
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_DEFAULT
+            @Suppress("DEPRECATION")
             databaseEnabled = true
             userAgentString = UserAgentHelper.getCurrentUa(this@CdnSnifferActivity)
         }
@@ -338,6 +341,7 @@ class CdnSnifferActivity : AppCompatActivity() {
                 }
                 layoutSnifferPanel.visibility = View.VISIBLE
                 applyFilter()
+                AppLogger.i(this, "CdnSniffer", "嗅探完成，发现 ${allResults.size} 个资源")
             } catch (e: Exception) {
                 Toast.makeText(this, "嗅探失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -432,7 +436,13 @@ class CdnSnifferActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        @Suppress("DEPRECATION")
         if (webView.canGoBack()) webView.goBack()
         else super.onBackPressed()
+    }
+
+    override fun onDestroy() {
+        AppLogger.flush()
+        super.onDestroy()
     }
 }

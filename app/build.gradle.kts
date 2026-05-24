@@ -12,7 +12,7 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "1.0.1"
     }
 
     buildTypes {
@@ -49,4 +49,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.8.2")
 
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    implementation("org.tukaani:xz:1.9")
 }
