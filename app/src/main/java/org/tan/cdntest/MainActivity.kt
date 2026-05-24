@@ -2,46 +2,55 @@ package org.tan.cdntest
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.PopupMenu
 import android.widget.ProgressBar
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.appbar.MaterialToolbar
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
-    private lateinit var swipeRefresh: SwipeRefreshLayout
+    private lateinit var btnCert: ImageButton
+    private lateinit var etUrl: EditText
+    private var hasSslError = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
-
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
-        swipeRefresh = findViewById(R.id.swipeRefresh)
+        btnCert = findViewById(R.id.btnCert)
+        etUrl = findViewById(R.id.etUrl)
 
         setupWebView()
-        setupSwipeRefresh()
+        setupUrlInput()
+        setupBottomNav()
         setupBackNavigation()
         requestNotificationPermission()
 
@@ -62,6 +71,28 @@ class MainActivity : AppCompatActivity() {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
             }
+        }
+    }
+
+    private fun setupUrlInput() {
+        etUrl.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
+                val input = etUrl.text.toString().trim()
+                if (input.isNotEmpty()) {
+                    hideKeyboard()
+                    if (SearchEngineHelper.isUrl(input)) {
+                        var url = input
+                        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                            url = "https://$url"
+                        }
+                        webView.loadUrl(url)
+                    } else {
+                        val searchUrl = SearchEngineHelper.buildSearchUrl(this, input)
+                        webView.loadUrl(searchUrl)
+                    }
+                }
+                true
+            } else false
         }
     }
 
@@ -92,18 +123,28 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                hasSslError = false
+            }
+
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
-                swipeRefresh.isRefreshing = false
                 progressBar.visibility = View.GONE
+                etUrl.setText(url)
+                updateCertIcon(url)
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 super.onReceivedError(view, request, error)
                 if (request.isForMainFrame) {
-                    swipeRefresh.isRefreshing = false
                     progressBar.visibility = View.GONE
                 }
+            }
+
+            override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
+                hasSslError = true
+                handler.proceed()
             }
         }
 
@@ -119,14 +160,79 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupSwipeRefresh() {
-        swipeRefresh.setColorSchemeResources(
-            R.color.primary,
-            R.color.primary_dark
-        )
-        swipeRefresh.setOnRefreshListener {
+    private fun setupBottomNav() {
+        findViewById<ImageButton>(R.id.btnGoBack).setOnClickListener {
+            if (webView.canGoBack()) webView.goBack()
+        }
+        findViewById<ImageButton>(R.id.btnGoForward).setOnClickListener {
+            if (webView.canGoForward()) webView.goForward()
+        }
+        findViewById<ImageButton>(R.id.btnHome).setOnClickListener {
+            webView.loadUrl("https://speedtest.2026524.xyz/")
+        }
+        findViewById<ImageButton>(R.id.btnSniffer).setOnClickListener {
+            startActivity(Intent(this, CdnSnifferActivity::class.java))
+        }
+        findViewById<ImageButton>(R.id.btnMore).setOnClickListener {
+            showMoreMenu(it)
+        }
+        findViewById<ImageButton>(R.id.btnRefresh).setOnClickListener {
             webView.reload()
         }
+        btnCert.setOnClickListener {
+            showCertDialog()
+        }
+    }
+
+    private fun updateCertIcon(url: String?) {
+        if (url == null) return
+        val icon = when {
+            url.startsWith("https://") && !hasSslError && webView.certificate != null -> R.drawable.ic_lock_green
+            url.startsWith("https://") -> R.drawable.ic_lock_error
+            else -> R.drawable.ic_lock_open
+        }
+        btnCert.setImageResource(icon)
+    }
+
+    private fun showCertDialog() {
+        val url = webView.url ?: ""
+        val message = if (url.startsWith("https://")) {
+            val cert = webView.certificate
+            if (cert != null) {
+                val info = CertHelper.parseCert(cert)
+                if (info != null) CertHelper.formatCertInfo(info) else "无法解析证书信息"
+            } else {
+                "无法获取证书信息"
+            }
+        } else {
+            "当前页面不是 HTTPS 连接"
+        }
+
+        val cookies = CookieManager.getInstance().getCookie(url) ?: "无"
+        val cookieSummary = if (cookies.length > 300) cookies.substring(0, 300) + "..." else cookies
+
+        AlertDialog.Builder(this)
+            .setTitle("网站信息")
+            .setMessage("$message\n\nCookie:\n$cookieSummary")
+            .setPositiveButton("复制 Cookie") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("cookie", cookies))
+                Toast.makeText(this, "已复制 Cookie", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showMoreMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        popup.menu.add(0, 1, 0, "更多设置")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> startActivity(Intent(this, MoreActivity::class.java))
+            }
+            true
+        }
+        popup.show()
     }
 
     private fun setupBackNavigation() {
@@ -142,23 +248,9 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_sniffer -> {
-                startActivity(Intent(this, CdnSnifferActivity::class.java))
-                true
-            }
-            R.id.action_more -> {
-                startActivity(Intent(this, MoreActivity::class.java))
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
+    private fun hideKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(etUrl.windowToken, 0)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

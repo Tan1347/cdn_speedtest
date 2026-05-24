@@ -47,6 +47,6 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.webkit:webkit:1.9.0")
     implementation("androidx.activity:activity-ktx:1.8.2")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 }

@@ -15,7 +15,6 @@ import android.view.LayoutInflater
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -126,6 +125,8 @@ class UpdateChecker(private val activity: Activity) {
             .show()
     }
 
+    private var destFile: File? = null
+
     private fun startDownload(apkUrl: String, totalSize: Long) {
         if (isDownloading) return
         isDownloading = true
@@ -135,7 +136,7 @@ class UpdateChecker(private val activity: Activity) {
         val dm = activity.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val fileName = "speedtest-update-${System.currentTimeMillis()}.apk"
         val downloadDir = DownloadHelper.getDownloadDir(activity)
-        val destFile = File(downloadDir, fileName)
+        destFile = File(downloadDir, fileName)
         val request = DownloadManager.Request(Uri.parse(apkUrl))
             .setTitle("网速测试 更新")
             .setDescription("正在下载新版本...")
@@ -171,6 +172,9 @@ class UpdateChecker(private val activity: Activity) {
                 if (!isDownloading) return
                 val cursor = dm.query(query)
                 if (cursor != null && cursor.moveToFirst()) {
+                    val status = cursor.getInt(
+                        cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)
+                    )
                     val bytesDownloaded = cursor.getLong(
                         cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
                     )
@@ -178,6 +182,28 @@ class UpdateChecker(private val activity: Activity) {
                         cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
                     )
                     cursor.close()
+
+                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                        isDownloading = false
+                        mainHandler.post {
+                            progressBar?.progress = 100
+                            progressText?.text = "下载完成"
+                            progressDialog?.dismiss()
+                            progressDialog = null
+                            showInstallDialog()
+                        }
+                        return
+                    }
+
+                    if (status == DownloadManager.STATUS_FAILED) {
+                        isDownloading = false
+                        mainHandler.post {
+                            progressDialog?.dismiss()
+                            progressDialog = null
+                            android.widget.Toast.makeText(activity, "下载失败", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                        return
+                    }
 
                     val total = if (bytesTotal > 0) bytesTotal else totalSize
                     val progress = if (total > 0) (bytesDownloaded * 100 / total).toInt() else 0
@@ -189,9 +215,7 @@ class UpdateChecker(private val activity: Activity) {
                         progressText?.text = String.format("%.1f MB / %.1f MB (%d%%)", downloadedMB, totalMB, progress)
                     }
 
-                    if (progress < 100) {
-                        mainHandler.postDelayed(this, 500)
-                    }
+                    mainHandler.postDelayed(this, 500)
                 } else {
                     cursor?.close()
                     mainHandler.postDelayed(this, 500)
@@ -215,7 +239,7 @@ class UpdateChecker(private val activity: Activity) {
                     mainHandler.post {
                         progressDialog?.dismiss()
                         progressDialog = null
-                        showInstallDialog(dm.getUriForDownloadedFile(downloadId))
+                        showInstallDialog()
                     }
                 }
             }
@@ -235,27 +259,18 @@ class UpdateChecker(private val activity: Activity) {
         }
     }
 
-    private fun showInstallDialog(apkUri: Uri) {
+    private fun showInstallDialog() {
         AlertDialog.Builder(activity)
             .setTitle("下载完成")
             .setMessage("新版本已下载完成，是否立即安装？")
-            .setPositiveButton("立即安装") { _, _ -> installApk(apkUri) }
+            .setPositiveButton("立即安装") { _, _ -> installApk() }
             .setNegativeButton("稍后安装", null)
             .setCancelable(true)
             .show()
     }
 
-    private fun installApk(uri: Uri) {
-        val contentUri = FileProvider.getUriForFile(
-            activity,
-            "${activity.packageName}.fileprovider",
-            File(DownloadHelper.getDownloadDir(activity), uri.lastPathSegment ?: "update.apk")
-        )
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(contentUri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        activity.startActivity(intent)
+    private fun installApk() {
+        val file = destFile ?: return
+        DownloadHelper.installApk(activity, file)
     }
 }

@@ -28,6 +28,15 @@
         android:ellipsize="end" />
 
     <ImageButton
+        android:id="@+id/btnDownload"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_download"
+        android:contentDescription="下载"
+        app:tint="@color/text_secondary" />
+
+    <ImageButton
         android:id="@+id/btnCopy"
         android:layout_width="36dp"
         android:layout_height="36dp"

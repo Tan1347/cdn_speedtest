@@ -14,12 +14,14 @@ data class SnifferResult(
 
 class CdnSnifferAdapter(
     private var items: List<SnifferResult> = emptyList(),
-    private val onCopy: (String) -> Unit
+    private val onCopy: (String) -> Unit,
+    private val onDownload: (String) -> Unit
 ) : RecyclerView.Adapter<CdnSnifferAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvType: TextView = view.findViewById(R.id.tvType)
         val tvUrl: TextView = view.findViewById(R.id.tvUrl)
+        val btnDownload: ImageButton = view.findViewById(R.id.btnDownload)
         val btnCopy: ImageButton = view.findViewById(R.id.btnCopy)
     }
 
@@ -33,6 +35,7 @@ class CdnSnifferAdapter(
         val item = items[position]
         holder.tvType.text = getTypeLabel(item.type)
         holder.tvUrl.text = item.url
+        holder.btnDownload.setOnClickListener { onDownload(item.url) }
         holder.btnCopy.setOnClickListener { onCopy(item.url) }
         holder.itemView.setOnLongClickListener {
             onCopy(item.url)

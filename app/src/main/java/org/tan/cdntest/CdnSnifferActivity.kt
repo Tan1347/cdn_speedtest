@@ -5,13 +5,13 @@ import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.view.View
-import androidx.appcompat.app.AlertDialog
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
+import android.webkit.CookieManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -22,11 +22,10 @@ import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.appbar.MaterialToolbar
-import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import org.json.JSONArray
@@ -34,12 +33,12 @@ import org.json.JSONArray
 class CdnSnifferActivity : AppCompatActivity() {
 
     private lateinit var etUrl: EditText
-    private lateinit var btnGo: MaterialButton
+    private lateinit var btnRefresh: ImageButton
+    private lateinit var btnCert: ImageButton
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
-    private lateinit var btnSniff: MaterialButton
+    private lateinit var layoutSnifferPanel: View
     private lateinit var chipGroup: ChipGroup
-    private lateinit var layoutResultBar: View
     private lateinit var tvResultCount: TextView
     private lateinit var btnClear: TextView
     private lateinit var rvResults: RecyclerView
@@ -47,39 +46,36 @@ class CdnSnifferActivity : AppCompatActivity() {
     private lateinit var adapter: CdnSnifferAdapter
     private var allResults = mutableListOf<SnifferResult>()
     private var currentFilter = "all"
+    private var currentUrl = ""
+    private var hasSslError = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_cdn_sniffer)
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.setNavigationOnClickListener { finish() }
-
         etUrl = findViewById(R.id.etUrl)
-        btnGo = findViewById(R.id.btnGo)
+        btnRefresh = findViewById(R.id.btnRefresh)
+        btnCert = findViewById(R.id.btnCert)
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
-        btnSniff = findViewById(R.id.btnSniff)
+        layoutSnifferPanel = findViewById(R.id.layoutSnifferPanel)
         chipGroup = findViewById(R.id.chipGroup)
-        layoutResultBar = findViewById(R.id.layoutResultBar)
         tvResultCount = findViewById(R.id.tvResultCount)
         btnClear = findViewById(R.id.btnClear)
         rvResults = findViewById(R.id.rvResults)
 
         setupWebView()
         setupUrlInput()
-        setupSniffButton()
+        setupBottomNav()
         setupChipFilter()
         setupResultList()
+        setupClearButton()
+    }
 
-        btnClear.setOnClickListener {
-            allResults.clear()
-            adapter.updateData(emptyList())
-            chipGroup.visibility = View.GONE
-            layoutResultBar.visibility = View.GONE
-            rvResults.visibility = View.GONE
-        }
+    override fun onResume() {
+        super.onResume()
+        webView.settings.userAgentString = UserAgentHelper.getCurrentUa(this)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -94,6 +90,7 @@ class CdnSnifferActivity : AppCompatActivity() {
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_DEFAULT
             databaseEnabled = true
+            userAgentString = UserAgentHelper.getCurrentUa(this@CdnSnifferActivity)
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -101,15 +98,33 @@ class CdnSnifferActivity : AppCompatActivity() {
                 val url = request.url.toString()
                 if (isDownloadUrl(url)) {
                     showDownloadConfirm(url, guessMimeType(url))
-                    return true  // 拦截，不交给系统
+                    return true
                 }
                 return false
+            }
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                hasSslError = false
+                progressBar.visibility = View.VISIBLE
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
+                currentUrl = url ?: ""
                 etUrl.setText(url)
+                updateCertIcon(url)
+            }
+
+            override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: android.net.http.SslError) {
+                hasSslError = true
+                AlertDialog.Builder(this@CdnSnifferActivity)
+                    .setTitle("SSL 证书警告")
+                    .setMessage("此网站的证书不受信任，是否继续？")
+                    .setPositiveButton("继续") { _, _ -> handler.proceed() }
+                    .setNegativeButton("取消") { _, _ -> handler.cancel() }
+                    .show()
             }
         }
 
@@ -124,7 +139,6 @@ class CdnSnifferActivity : AppCompatActivity() {
             }
         }
 
-        // 拦截下载链接
         webView.setDownloadListener { url, _, _, mimeType, _ ->
             showDownloadConfirm(url, mimeType)
         }
@@ -132,36 +146,122 @@ class CdnSnifferActivity : AppCompatActivity() {
 
     private fun setupUrlInput() {
         val loadUrl = {
-            var url = etUrl.text.toString().trim()
-            if (url.isNotEmpty()) {
-                if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                    url = "https://$url"
-                }
+            val input = etUrl.text.toString().trim()
+            if (input.isNotEmpty()) {
                 hideKeyboard()
-                webView.loadUrl(url)
+                if (SearchEngineHelper.isUrl(input)) {
+                    var url = input
+                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                        url = "https://$url"
+                    }
+                    webView.loadUrl(url)
+                } else {
+                    val searchUrl = SearchEngineHelper.buildSearchUrl(this, input)
+                    webView.loadUrl(searchUrl)
+                }
             }
         }
 
-        btnGo.setOnClickListener { loadUrl() }
-
         etUrl.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_GO) {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
                 loadUrl()
                 true
             } else false
         }
+
+        btnRefresh.setOnClickListener {
+            webView.reload()
+        }
+
+        btnCert.setOnClickListener {
+            showCertDialog()
+        }
     }
 
-    private fun setupSniffButton() {
-        btnSniff.setOnClickListener {
+    private fun setupBottomNav() {
+        findViewById<ImageButton>(R.id.btnGoBack).setOnClickListener {
+            if (webView.canGoBack()) webView.goBack()
+        }
+        findViewById<ImageButton>(R.id.btnGoForward).setOnClickListener {
+            if (webView.canGoForward()) webView.goForward()
+        }
+        findViewById<ImageButton>(R.id.btnHome).setOnClickListener {
+            webView.loadUrl("https://speedtest.2026524.xyz/")
+        }
+        findViewById<ImageButton>(R.id.btnSniffer).setOnClickListener {
             sniffResources()
         }
+        findViewById<ImageButton>(R.id.btnMore).setOnClickListener {
+            showMoreMenu(it)
+        }
+    }
+
+    private fun showMoreMenu(anchor: View) {
+        val popup = android.widget.PopupMenu(this, anchor)
+        popup.menu.add(0, 1, 0, "设置")
+        popup.menu.add(0, 2, 1, "下载管理")
+        popup.menu.add(0, 3, 2, "分享链接")
+        popup.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> startActivity(Intent(this, MoreActivity::class.java))
+                2 -> startActivity(Intent(this, DownloadManagerActivity::class.java))
+                3 -> shareUrl()
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun shareUrl() {
+        if (currentUrl.isNotEmpty()) {
+            val intent = Intent(Intent.ACTION_SEND)
+            intent.type = "text/plain"
+            intent.putExtra(Intent.EXTRA_TEXT, currentUrl)
+            startActivity(Intent.createChooser(intent, "分享链接"))
+        }
+    }
+
+    private fun updateCertIcon(url: String?) {
+        if (url == null) return
+        val icon = when {
+            url.startsWith("https://") && !hasSslError && webView.certificate != null -> R.drawable.ic_lock_green
+            url.startsWith("https://") -> R.drawable.ic_lock_error
+            else -> R.drawable.ic_lock_open
+        }
+        btnCert.setImageResource(icon)
+    }
+
+    private fun showCertDialog() {
+        val message = if (currentUrl.startsWith("https://")) {
+            val cert = webView.certificate
+            if (cert != null) {
+                val info = CertHelper.parseCert(cert)
+                if (info != null) CertHelper.formatCertInfo(info) else "无法解析证书信息"
+            } else {
+                "无法获取证书信息"
+            }
+        } else {
+            "当前页面不是 HTTPS 连接"
+        }
+
+        val cookies = CookieManager.getInstance().getCookie(currentUrl) ?: "无"
+        val cookieSummary = if (cookies.length > 300) cookies.substring(0, 300) + "..." else cookies
+
+        AlertDialog.Builder(this)
+            .setTitle("网站信息")
+            .setMessage("$message\n\nCookie:\n$cookieSummary")
+            .setPositiveButton("复制 Cookie") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("cookie", cookies))
+                Toast.makeText(this, "已复制 Cookie", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     private fun setupChipFilter() {
         val chipAll = findViewById<Chip>(R.id.chipAll)
         chipAll.isChecked = true
-
         chipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
             if (checkedIds.isNotEmpty()) {
                 currentFilter = when (checkedIds[0]) {
@@ -178,9 +278,20 @@ class CdnSnifferActivity : AppCompatActivity() {
     }
 
     private fun setupResultList() {
-        adapter = CdnSnifferAdapter { url -> copyToClipboard(url) }
+        adapter = CdnSnifferAdapter(
+            onCopy = { url -> copyToClipboard(url) },
+            onDownload = { url -> showDownloadConfirm(url, guessMimeType(url)) }
+        )
         rvResults.layoutManager = LinearLayoutManager(this)
         rvResults.adapter = adapter
+    }
+
+    private fun setupClearButton() {
+        btnClear.setOnClickListener {
+            allResults.clear()
+            adapter.updateData(emptyList())
+            layoutSnifferPanel.visibility = View.GONE
+        }
     }
 
     private fun sniffResources() {
@@ -194,15 +305,9 @@ class CdnSnifferActivity : AppCompatActivity() {
               results.push({url: url, type: type});
             }
           }
-          document.querySelectorAll('img[src]').forEach(function(e) {
-            add(e.src, 'image');
-          });
-          document.querySelectorAll('video[src], video source[src]').forEach(function(e) {
-            add(e.src, 'video');
-          });
-          document.querySelectorAll('audio[src], audio source[src]').forEach(function(e) {
-            add(e.src, 'audio');
-          });
+          document.querySelectorAll('img[src]').forEach(function(e) { add(e.src, 'image'); });
+          document.querySelectorAll('video[src], video source[src]').forEach(function(e) { add(e.src, 'video'); });
+          document.querySelectorAll('audio[src], audio source[src]').forEach(function(e) { add(e.src, 'audio'); });
           document.querySelectorAll('a[href]').forEach(function(e) {
             var h = e.href;
             if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?|#|$)/i.test(h)) add(h, 'image');
@@ -224,15 +329,15 @@ class CdnSnifferActivity : AppCompatActivity() {
         webView.evaluateJavascript(js) { result ->
             try {
                 val cleanResult = result.removeSurrounding("\"")
-                    .replace("\\\"", "\"")
-                    .replace("\\/", "/")
+                    .replace("\\\"", "\"").replace("\\/", "/")
                 val jsonArray = JSONArray(cleanResult)
                 allResults.clear()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
                     allResults.add(SnifferResult(obj.getString("url"), obj.getString("type")))
                 }
-                showResults()
+                layoutSnifferPanel.visibility = View.VISIBLE
+                applyFilter()
             } catch (e: Exception) {
                 Toast.makeText(this, "嗅探失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -240,8 +345,7 @@ class CdnSnifferActivity : AppCompatActivity() {
     }
 
     private fun addDownloadResult(url: String) {
-        val exists = allResults.any { it.url == url }
-        if (!exists) {
+        if (!allResults.any { it.url == url }) {
             val type = when {
                 url.matches(Regex(".*\\.(jpg|jpeg|png|gif|webp|svg|bmp)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "image"
                 url.matches(Regex(".*\\.(mp4|avi|mkv|mov|flv|wmv|webm)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "video"
@@ -250,20 +354,23 @@ class CdnSnifferActivity : AppCompatActivity() {
                 else -> "download"
             }
             allResults.add(0, SnifferResult(url, type))
-            showResults()
-            Toast.makeText(this, "已捕获下载链接", Toast.LENGTH_SHORT).show()
+            layoutSnifferPanel.visibility = View.VISIBLE
+            applyFilter()
         }
+    }
+
+    private fun applyFilter() {
+        val filtered = if (currentFilter == "all") allResults else allResults.filter { it.type == currentFilter }
+        adapter.updateData(filtered)
+        tvResultCount.text = "共 ${filtered.size} 个资源"
     }
 
     private fun isDownloadUrl(url: String): Boolean {
         val lower = url.lowercase()
-        val extensions = listOf(
-            ".apk", ".zip", ".rar", ".7z", ".tar", ".gz", ".dmg", ".exe", ".msi", ".deb", ".rpm",
-            ".mp4", ".avi", ".mkv", ".mov", ".flv", ".wmv", ".webm", ".m4v",
-            ".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a",
-            ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx"
-        )
-        return extensions.any { ext ->
+        val exts = listOf(".apk",".zip",".rar",".7z",".tar",".gz",".dmg",".exe",".msi",".deb",".rpm",
+            ".mp4",".avi",".mkv",".mov",".flv",".wmv",".webm",".m4v",
+            ".mp3",".wav",".ogg",".flac",".aac",".m4a",".pdf",".doc",".docx",".xls",".xlsx")
+        return exts.any { ext ->
             val idx = lower.indexOf(ext)
             idx > 0 && (idx + ext.length >= lower.length || lower[idx + ext.length] == '?' || lower[idx + ext.length] == '#')
         }
@@ -284,15 +391,11 @@ class CdnSnifferActivity : AppCompatActivity() {
     private fun showDownloadConfirm(url: String, mimeType: String?) {
         val fileName = Uri.parse(url).lastPathSegment ?: "download"
         val cleanName = fileName.split("?")[0].split("#")[0]
-
         addDownloadResult(url)
-
         AlertDialog.Builder(this)
             .setTitle("下载确认")
             .setMessage("是否下载以下文件？\n\n$cleanName")
-            .setPositiveButton("下载") { _, _ ->
-                startDownload(url, mimeType)
-            }
+            .setPositiveButton("下载") { _, _ -> startDownload(url, mimeType) }
             .setNegativeButton("取消", null)
             .show()
     }
@@ -302,37 +405,18 @@ class CdnSnifferActivity : AppCompatActivity() {
             val fileName = Uri.parse(url).lastPathSegment ?: "download_${System.currentTimeMillis()}"
             val cleanName = fileName.split("?")[0].split("#")[0]
             val downloadDir = DownloadHelper.getDownloadDir(this)
-
             val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val request = DownloadManager.Request(Uri.parse(url))
                 .setTitle(cleanName)
-                .setDescription("正在下载到应用目录...")
+                .setDescription("正在下载...")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationUri(Uri.fromFile(java.io.File(downloadDir, cleanName)))
                 .setMimeType(mimeType ?: "application/octet-stream")
-
             dm.enqueue(request)
             Toast.makeText(this, "开始下载: $cleanName", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun showResults() {
-        chipGroup.visibility = View.VISIBLE
-        layoutResultBar.visibility = View.VISIBLE
-        rvResults.visibility = View.VISIBLE
-        applyFilter()
-    }
-
-    private fun applyFilter() {
-        val filtered = if (currentFilter == "all") {
-            allResults
-        } else {
-            allResults.filter { it.type == currentFilter }
-        }
-        adapter.updateData(filtered)
-        tvResultCount.text = "共 ${filtered.size} 个资源"
     }
 
     private fun copyToClipboard(url: String) {
@@ -342,15 +426,13 @@ class CdnSnifferActivity : AppCompatActivity() {
     }
 
     private fun hideKeyboard() {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.hideSoftInputFromWindow(etUrl.windowToken, 0)
     }
 
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            super.onBackPressed()
-        }
+        if (webView.canGoBack()) webView.goBack()
+        else super.onBackPressed()
     }
 }

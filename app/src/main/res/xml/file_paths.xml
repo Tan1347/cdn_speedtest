@@ -3,4 +3,7 @@
     <external-files-path
         name="download"
         path="download/" />
+    <external-path
+        name="system_download"
+        path="Download/cdntest/" />
 </paths>

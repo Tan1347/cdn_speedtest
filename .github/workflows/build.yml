@@ -75,16 +75,49 @@ jobs:
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
         run: ./gradlew assembleRelease --stacktrace --no-daemon
 
+      - name: Generate release notes
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        id: notes
+        run: |
+          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          if [ -n "$LATEST_TAG" ]; then
+            RANGE="${LATEST_TAG}..HEAD"
+          else
+            RANGE="HEAD~10..HEAD"
+          fi
+
+          COMMITS=$(git log "$RANGE" --pretty=format:"%h %s" --no-merges -10 | while IFS= read -r line; do
+            # 限制每行200字符
+            if [ ${#line} -gt 200 ]; then
+              line="${line:0:197}..."
+            fi
+            echo "- $line"
+          done)
+
+          # 写入多行输出
+          {
+            echo "body<<EOF"
+            echo "## 更新内容"
+            echo ""
+            if [ -n "$COMMITS" ]; then
+              echo "$COMMITS"
+            else
+              echo "- 无提交记录"
+            fi
+            echo ""
+            echo "---"
+            echo "**版本**: v${{ steps.tag.outputs.version_name }}"
+            echo "**构建**: ${{ steps.tag.outputs.tag }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: "v${{ steps.tag.outputs.version_name }}"
-          body: |
-            Automatic weekly build
-            - Commit: ${{ steps.check.outputs.head_sha }}
-            - Tag: ${{ steps.tag.outputs.tag }}
+          body: ${{ steps.notes.outputs.body }}
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
