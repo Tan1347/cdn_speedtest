@@ -77,12 +77,29 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
+      - name: Decode release keystore
+        if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            echo "Keystore decoded successfully"
+          else
+            echo "ERROR: KEYSTORE_BASE64 secret not set"
+            exit 1
+          fi
+
       - name: Make gradlew executable
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
         run: chmod +x ./gradlew
 
       - name: Build Release APK
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
+        env:
+          KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEYSTORE_KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Generate release notes

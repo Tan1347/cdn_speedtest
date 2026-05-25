@@ -1,6 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+val keystoreProperties = Properties()
+val keystoreFile = rootProject.file("release.keystore")
+if (keystoreFile.exists()) {
+    keystoreProperties.load(keystoreFile.inputStream())
 }
 
 android {
@@ -15,6 +23,21 @@ android {
         versionName = "1.0.3"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("release.keystore")
+            storePassword = System.getenv("KEYSTORE_STORE_PASSWORD")
+                ?: keystoreProperties.getProperty("storePassword")
+                ?: "cdntest123"
+            keyAlias = System.getenv("KEYSTORE_KEY_ALIAS")
+                ?: keystoreProperties.getProperty("keyAlias")
+                ?: "cdntest"
+            keyPassword = System.getenv("KEYSTORE_KEY_PASSWORD")
+                ?: keystoreProperties.getProperty("keyPassword")
+                ?: "cdntest123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -23,7 +46,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
