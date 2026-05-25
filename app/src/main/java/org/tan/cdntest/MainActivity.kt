@@ -118,10 +118,18 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
-                if (url.startsWith("https://speedtest.2026524.xyz/") || url.startsWith("http://speedtest.2026524.xyz/")) {
+                val scheme = request.url.scheme
+                // 拦截文件下载链接
+                if ((scheme == "http" || scheme == "https") && isDownloadUrl(url)) {
+                    showDownloadConfirm(url, guessDownloadMimeType(url))
+                    return true
+                }
+                if (scheme == "http" || scheme == "https") {
                     return false
                 }
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, request.url))
+                } catch (_: Exception) {}
                 return true
             }
 
@@ -162,6 +170,65 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        webView.setDownloadListener { url, _, _, mimeType, _ ->
+            showDownloadConfirm(url, mimeType)
+        }
+    }
+
+    private fun showDownloadConfirm(url: String, mimeType: String?) {
+        val fileName = Uri.parse(url).lastPathSegment ?: "download"
+        val cleanName = fileName.split("?")[0].split("#")[0]
+        AlertDialog.Builder(this)
+            .setTitle("下载确认")
+            .setMessage("是否下载以下文件？\n\n$cleanName")
+            .setPositiveButton("下载") { _, _ -> startDownload(url, mimeType) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun startDownload(url: String, mimeType: String?) {
+        try {
+            val fileName = Uri.parse(url).lastPathSegment ?: "download_${System.currentTimeMillis()}"
+            val cleanName = fileName.split("?")[0].split("#")[0]
+            val downloadDir = DownloadHelper.getDownloadDir(this)
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            val request = android.app.DownloadManager.Request(Uri.parse(url))
+                .setTitle(cleanName)
+                .setDescription("正在下载...")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationUri(Uri.fromFile(java.io.File(downloadDir, cleanName)))
+                .setMimeType(mimeType ?: "application/octet-stream")
+            dm.enqueue(request)
+            Toast.makeText(this, "开始下载: $cleanName", Toast.LENGTH_SHORT).show()
+            AppLogger.i(this, "MainActivity", "触发下载: $cleanName, URL: $url")
+        } catch (e: Exception) {
+            Toast.makeText(this, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            AppLogger.e(this, "MainActivity", "下载失败: $url", e)
+        }
+    }
+
+    private fun isDownloadUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        val exts = listOf(".apk", ".zip", ".rar", ".7z", ".tar", ".gz", ".dmg", ".exe", ".msi",
+            ".mp4", ".avi", ".mkv", ".mov", ".flv", ".wmv", ".webm",
+            ".mp3", ".wav", ".ogg", ".flac", ".aac", ".pdf")
+        return exts.any { ext ->
+            val idx = lower.indexOf(ext)
+            idx > 0 && (idx + ext.length >= lower.length || lower[idx + ext.length] == '?' || lower[idx + ext.length] == '#')
+        }
+    }
+
+    private fun guessDownloadMimeType(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            lower.contains(".apk") -> "application/vnd.android.package-archive"
+            lower.contains(".zip") || lower.contains(".rar") || lower.contains(".7z") -> "application/zip"
+            lower.contains(".mp4") || lower.contains(".avi") || lower.contains(".mkv") -> "video/*"
+            lower.contains(".mp3") || lower.contains(".wav") || lower.contains(".ogg") -> "audio/*"
+            lower.contains(".pdf") -> "application/pdf"
+            else -> "application/octet-stream"
+        }
     }
 
     private fun setupBottomNav() {
@@ -175,7 +242,9 @@ class MainActivity : AppCompatActivity() {
             webView.loadUrl("https://speedtest.2026524.xyz/")
         }
         findViewById<ImageButton>(R.id.btnSniffer).setOnClickListener {
-            startActivity(Intent(this, CdnSnifferActivity::class.java))
+            val intent = Intent(this, CdnSnifferActivity::class.java)
+            webView.url?.let { url -> intent.putExtra("url", url) }
+            startActivity(intent)
         }
         findViewById<ImageButton>(R.id.btnMore).setOnClickListener {
             startActivity(Intent(this, MoreActivity::class.java))

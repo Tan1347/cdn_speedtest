@@ -73,6 +73,13 @@ class CdnSnifferActivity : AppCompatActivity() {
         setupChipFilter()
         setupResultList()
         setupClearButton()
+
+        // 从 MainActivity 传入当前 URL
+        val passedUrl = intent.getStringExtra("url")
+        if (!passedUrl.isNullOrEmpty()) {
+            webView.loadUrl(passedUrl)
+            etUrl.setText(passedUrl)
+        }
     }
 
     override fun onResume() {
