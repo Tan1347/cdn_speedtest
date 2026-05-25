@@ -29,6 +29,7 @@ class SimpleDownloader(private val activity: Activity) {
     fun download(url: String, fileName: String, onComplete: ((File) -> Unit)? = null) {
         cancelled = false
         showProgressDialog(fileName)
+        AppLogger.i(activity, "Downloader", "开始下载: $fileName, URL: $url")
 
         executor.execute {
             var conn: HttpURLConnection? = null
@@ -45,6 +46,8 @@ class SimpleDownloader(private val activity: Activity) {
                 conn.connect()
 
                 val totalSize = conn.contentLength.toLong()
+                AppLogger.i(activity, "Downloader", "连接成功, 文件大小: ${totalSize / 1024 / 1024}MB, 保存: ${file.absolutePath}")
+
                 val input = conn.inputStream
                 val output = FileOutputStream(file)
                 val buffer = ByteArray(8192)
@@ -79,13 +82,18 @@ class SimpleDownloader(private val activity: Activity) {
                 input.close()
 
                 if (!cancelled) {
+                    AppLogger.i(activity, "Downloader", "下载完成: $fileName, 大小: ${downloaded / 1024}KB")
                     mainHandler.post {
                         progressDialog?.dismiss()
                         progressDialog = null
                         onComplete?.invoke(file)
                     }
+                } else {
+                    AppLogger.w(activity, "Downloader", "下载取消: $fileName")
+                    file.delete()
                 }
             } catch (e: Exception) {
+                AppLogger.e(activity, "Downloader", "下载失败: $fileName, URL: $url", e)
                 file?.delete()
                 mainHandler.post {
                     progressDialog?.dismiss()

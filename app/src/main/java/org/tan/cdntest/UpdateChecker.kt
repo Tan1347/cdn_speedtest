@@ -83,7 +83,9 @@ class UpdateChecker(private val activity: Activity) {
                         val release = parseReleaseJson(json)
                         if (release != null) {
                             val currentVersion = getCurrentVersion()
-                            if (release.tagName != currentVersion) {
+                            // tagName 格式: v1.0.2-abc1234，提取版本号部分比较
+                            val remoteVersion = extractVersion(release.tagName)
+                            if (remoteVersion != currentVersion) {
                                 // 为下载链接生成镜像代理版本
                                 val optimized = optimizeDownloadUrl(release)
                                 AppLogger.i(activity, "UpdateChecker", "发现新版本: ${release.tagName} (当前: $currentVersion)")
@@ -106,7 +108,8 @@ class UpdateChecker(private val activity: Activity) {
             val release = tryDirectWithRemoteHosts()
             if (release != null) {
                 val currentVersion = getCurrentVersion()
-                if (release.tagName != currentVersion) {
+                val remoteVersion = extractVersion(release.tagName)
+                if (remoteVersion != currentVersion) {
                     val optimized = optimizeDownloadUrl(release)
                     AppLogger.i(activity, "UpdateChecker", "远程 hosts 直连成功: ${release.tagName}")
                     mainHandler.post { onResult(optimized) }
@@ -145,6 +148,20 @@ class UpdateChecker(private val activity: Activity) {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * 从 tag name 中提取版本号
+     * v1.0.2-abc1234 → 1.0.2
+     * v1.0.2 → 1.0.2
+     * 1.0.2 → 1.0.2
+     */
+    private fun extractVersion(tagName: String): String {
+        // 去掉 v 前缀
+        val noV = if (tagName.startsWith("v")) tagName.substring(1) else tagName
+        // 去掉 - 后面的 commit hash 部分（如 -abc1234）
+        val dashIndex = noV.indexOf('-')
+        return if (dashIndex > 0) noV.substring(0, dashIndex) else noV
     }
 
     /**
