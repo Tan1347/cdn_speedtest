@@ -149,7 +149,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "Checking Gradle caches..."
-          CACHES=$(gh api repos/${{ github.repository }}/actions/caches --jq '.actions_caches[] | select(.key | startswith("gradle-")) | .id' | head -n -2)
+          CACHES=$(gh api repos/${{ github.repository }}/actions/caches --jq '[.actions_caches[] | select(.key | startswith("gradle-"))] | sort_by(.created_at) | reverse | .[2:] | .[].id')
           if [ -n "$CACHES" ]; then
             COUNT=$(echo "$CACHES" | wc -l)
             echo "Deleting $COUNT old cache(s)..."
