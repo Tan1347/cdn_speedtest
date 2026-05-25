@@ -24,7 +24,7 @@ jobs:
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "Current HEAD: $HEAD_SHA"
 
-          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
+          LATEST_TAG=$(git tag -l 'v*' --sort=-creatordate | head -n1)
           if [ -z "$LATEST_TAG" ]; then
             echo "No existing release found, build needed"
             echo "need_build=true" >> "$GITHUB_OUTPUT"
@@ -89,11 +89,15 @@ jobs:
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
         id: notes
         run: |
-          LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n1)
-          if [ -n "$LATEST_TAG" ]; then
-            RANGE="${LATEST_TAG}..HEAD"
+          CURRENT_TAG="${{ steps.tag.outputs.tag }}"
+          # 排除当前 tag，按创建时间排序取上一个版本
+          PREV_TAG=$(git tag -l 'v*' --sort=-creatordate | grep -v "^${CURRENT_TAG}$" | head -n1)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+            echo "Comparing: $PREV_TAG..HEAD"
           else
             RANGE="HEAD~10..HEAD"
+            echo "No previous tag, using last 10 commits"
           fi
 
           COMMITS=$(git log "$RANGE" --pretty=format:"%h %s" --no-merges -10 | while IFS= read -r line; do
@@ -176,7 +180,7 @@ jobs:
           fi
 
           # 同时删除旧的 release tags
-          OLD_TAGS=$(git tag -l 'v*' --sort=-v:refname | tail -n +11)
+          OLD_TAGS=$(git tag -l 'v*' --sort=-creatordate | tail -n +11)
           if [ -n "$OLD_TAGS" ]; then
             echo "Deleting old tags: $OLD_TAGS"
             for TAG in $OLD_TAGS; do
