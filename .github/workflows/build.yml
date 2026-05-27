@@ -66,16 +66,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Cache Gradle packages
+      - name: Setup Gradle
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Decode release keystore
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'

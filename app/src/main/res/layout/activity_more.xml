@@ -294,44 +294,6 @@
                         android:layout_marginVertical="12dp"
                         android:background="@color/divider" />
 
-                    <!-- 下载引擎 -->
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="下载引擎"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary" />
-
-                    <RadioGroup
-                        android:id="@+id/rgDownloadEngine"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp">
-
-                        <RadioButton
-                            android:id="@+id/rbSystemEngine"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="系统下载器 (DownloadManager)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbAppEngine"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="应用内下载器 (HTTP 直连)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-                    </RadioGroup>
-
-                    <!-- 分隔线 -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginVertical="12dp"
-                        android:background="@color/divider" />
-
                     <!-- TS 合并格式 -->
                     <TextView
                         android:layout_width="match_parent"
@@ -386,6 +348,44 @@
                             android:textSize="14sp"
                             android:textColor="@color/text_primary" />
                     </RadioGroup>
+
+                    <!-- 分隔线 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="12dp"
+                        android:background="@color/divider" />
+
+                    <!-- 下载线程数 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="下载线程数"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_secondary" />
+
+                        <TextView
+                            android:id="@+id/tvThreadCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary" />
+                    </LinearLayout>
+
+                    <SeekBar
+                        android:id="@+id/seekBarThreads"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:min="1"
+                        android:max="8" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

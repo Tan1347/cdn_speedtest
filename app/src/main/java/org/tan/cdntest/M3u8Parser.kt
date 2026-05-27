@@ -1,5 +1,6 @@
 package org.tan.cdntest
 
+import android.util.Log
 import java.net.URI
 
 data class M3u8Segment(
@@ -88,14 +89,21 @@ object M3u8Parser {
 
     fun fetchAndParse(url: String): M3u8Info? {
         return try {
+            Log.i("CDNTest", "[M3u8Parser] fetchAndParse: $url")
             val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 15000
             conn.readTimeout = 15000
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36")
             conn.connect()
+            Log.i("CDNTest", "[M3u8Parser] HTTP ${conn.responseCode}, contentLength=${conn.contentLength}")
             val content = conn.inputStream.bufferedReader().readText()
             conn.disconnect()
-            parse(content, url)
-        } catch (_: Exception) {
+            Log.i("CDNTest", "[M3u8Parser] 内容长度: ${content.length} 字符, 前200: ${content.take(200)}")
+            val result = parse(content, url)
+            Log.i("CDNTest", "[M3u8Parser] 解析结果: ${result.segments.size} 个分片, 总时长=${result.totalDuration}s, key=${result.keyInfo?.method}")
+            result
+        } catch (e: Exception) {
+            Log.e("CDNTest", "[M3u8Parser] fetchAndParse 异常: ${e.message}", e)
             null
         }
     }

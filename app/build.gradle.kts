@@ -21,7 +21,11 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = 2
-        versionName = "1.0.3"
+        versionName = "1.0.5"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     signingConfigs {
@@ -63,6 +67,8 @@ android {
     buildFeatures {
         viewBinding = false
     }
+
+
 }
 
 dependencies {
@@ -74,7 +80,7 @@ dependencies {
 
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("org.tukaani:xz:1.9")
-    implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
+    implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
 
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")

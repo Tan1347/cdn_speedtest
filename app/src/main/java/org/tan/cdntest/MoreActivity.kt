@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.RadioGroup
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import com.google.android.material.switchmaterial.SwitchMaterial
@@ -21,7 +22,6 @@ class MoreActivity : AppCompatActivity() {
     private lateinit var tvCurrentUa: TextView
     private lateinit var tvCurrentDir: TextView
     private lateinit var rgDownloadDir: RadioGroup
-    private lateinit var rgDownloadEngine: RadioGroup
     private lateinit var tvCurrentEngine: TextView
     private lateinit var tvCurrentVersion: TextView
     private lateinit var tvLatestVersion: TextView
@@ -41,7 +41,6 @@ class MoreActivity : AppCompatActivity() {
         tvCurrentUa = findViewById(R.id.tvCurrentUa)
         tvCurrentDir = findViewById(R.id.tvCurrentDir)
         rgDownloadDir = findViewById(R.id.rgDownloadDir)
-        rgDownloadEngine = findViewById(R.id.rgDownloadEngine)
         tvCurrentEngine = findViewById(R.id.tvCurrentEngine)
         tvCurrentVersion = findViewById(R.id.tvCurrentVersion)
         tvLatestVersion = findViewById(R.id.tvLatestVersion)
@@ -55,7 +54,6 @@ class MoreActivity : AppCompatActivity() {
         setupSearchEngineSection()
         setupLogSection()
         setupDownloadDirSection()
-        setupDownloadEngineSection()
         setupTsFormatSection()
         setupHostsSection()
         setupVersionSection()
@@ -269,18 +267,6 @@ class MoreActivity : AppCompatActivity() {
         tvCurrentDir.text = "当前: ${DownloadHelper.getDownloadDir(this).absolutePath}"
     }
 
-    // --- Download Engine ---
-    private fun setupDownloadEngineSection() {
-        val isSystem = DownloadHelper.isSystemEngine(this)
-        rgDownloadEngine.check(if (isSystem) R.id.rbSystemEngine else R.id.rbAppEngine)
-
-        rgDownloadEngine.setOnCheckedChangeListener { _, checkedId ->
-            val useSystem = checkedId == R.id.rbSystemEngine
-            DownloadHelper.setUseSystemEngine(this, useSystem)
-            Toast.makeText(this, if (useSystem) "已切换到系统下载器" else "已切换到应用内下载器", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     // --- TS Format ---
     private fun setupTsFormatSection() {
         val rgTsFormat = findViewById<RadioGroup>(R.id.rgTsFormat)
@@ -305,6 +291,24 @@ class MoreActivity : AppCompatActivity() {
             DownloadHelper.setTsFormat(this, format)
             Toast.makeText(this, "TS 格式: ${format.label}", Toast.LENGTH_SHORT).show()
         }
+
+        val tvThreadCount = findViewById<TextView>(R.id.tvThreadCount)
+        val seekBar = findViewById<SeekBar>(R.id.seekBarThreads)
+        val currentThreads = DownloadHelper.getDownloadThreads(this)
+        seekBar.progress = currentThreads
+        tvThreadCount.text = "${currentThreads} 线程"
+
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                val threads = progress.coerceIn(1, 8)
+                tvThreadCount.text = "${threads} 线程"
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                val threads = seekBar.progress.coerceIn(1, 8)
+                DownloadHelper.setDownloadThreads(this@MoreActivity, threads)
+            }
+        })
     }
 
     // --- Hosts ---

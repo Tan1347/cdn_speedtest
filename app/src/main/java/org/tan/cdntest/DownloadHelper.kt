@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import android.os.StatFs
 import java.io.File
 
 object DownloadHelper {
@@ -38,16 +39,6 @@ object DownloadHelper {
         prefs.edit().putBoolean("use_system_dir", useSystem).apply()
     }
 
-    fun isSystemEngine(context: Context): Boolean {
-        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
-        return prefs.getBoolean("use_system_engine", true)
-    }
-
-    fun setUseSystemEngine(context: Context, useSystem: Boolean) {
-        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putBoolean("use_system_engine", useSystem).apply()
-    }
-
     fun getTsFormat(context: Context): TsOutputFormat {
         val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
         val name = prefs.getString("ts_format", TsOutputFormat.ORIGINAL.name) ?: TsOutputFormat.ORIGINAL.name
@@ -57,6 +48,16 @@ object DownloadHelper {
     fun setTsFormat(context: Context, format: TsOutputFormat) {
         val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("ts_format", format.name).apply()
+    }
+
+    fun getDownloadThreads(context: Context): Int {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        return prefs.getInt("download_threads", 3).coerceIn(1, 8)
+    }
+
+    fun setDownloadThreads(context: Context, threads: Int) {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("download_threads", threads.coerceIn(1, 8)).apply()
     }
 
     fun getDownloadedFiles(context: Context): List<File> {
@@ -85,6 +86,16 @@ object DownloadHelper {
             }
         }
         return results.sortedByDescending { it.date }
+    }
+
+    data class StorageInfo(val total: Long, val available: Long, val used: Long)
+
+    fun getStorageInfo(context: Context): StorageInfo {
+        val dir = getDownloadDir(context)
+        val stat = StatFs(dir.absolutePath)
+        val total = stat.totalBytes
+        val available = stat.availableBytes
+        return StorageInfo(total, available, total - available)
     }
 
     fun formatFileSize(bytes: Long): String {

@@ -27,14 +27,17 @@
             android:orientation="vertical"
             android:layout_marginStart="12dp">
 
-            <TextView
-                android:id="@+id/tvFileName"
+            <EditText
+                android:id="@+id/etFileName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:textSize="14sp"
                 android:textColor="@color/text_primary"
-                android:maxLines="2"
-                android:ellipsize="end" />
+                android:inputType="text"
+                android:singleLine="true"
+                android:background="@android:drawable/edit_text"
+                android:paddingHorizontal="4dp"
+                android:paddingVertical="2dp" />
 
             <TextView
                 android:id="@+id/tvDuration"

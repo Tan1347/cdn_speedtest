@@ -1,5 +1,6 @@
 package org.tan.cdntest
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -28,9 +29,11 @@ object TsDownloader {
         onProgress: ((downloaded: Int, total: Int) -> Unit)? = null
     ): List<TsDownloadResult> = coroutineScope {
         val total = segments.size
+        Log.i("CDNTest", "[TsDownloader] 开始下载 $total 个分片, 并发=$concurrency, 加密=${keyInfo?.method ?: "无"}")
         var downloaded = 0
         val semaphore = Semaphore(concurrency)
         val keyBytes = if (keyInfo != null && keyInfo.method != "NONE") {
+            Log.i("CDNTest", "[TsDownloader] 获取密钥: ${keyInfo.uri}")
             fetchKey(keyInfo.uri)
         } else null
 
@@ -45,6 +48,9 @@ object TsDownloader {
                     }
                     synchronized(this@TsDownloader) {
                         downloaded++
+                        if (downloaded % 10 == 0 || downloaded == total) {
+                            Log.i("CDNTest", "[TsDownloader] 进度: $downloaded/$total")
+                        }
                         onProgress?.invoke(downloaded, total)
                     }
                     TsDownloadResult(decrypted, segment.index)
@@ -59,7 +65,11 @@ object TsDownloader {
         val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 30000
         conn.readTimeout = 30000
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0")
         conn.connect()
+        if (conn.responseCode !in 200..299) {
+            throw Exception("HTTP ${conn.responseCode}: $url")
+        }
         val data = conn.inputStream.readBytes()
         conn.disconnect()
         return data
@@ -69,7 +79,11 @@ object TsDownloader {
         val conn = URL(keyUrl).openConnection() as HttpURLConnection
         conn.connectTimeout = 15000
         conn.readTimeout = 15000
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0")
         conn.connect()
+        if (conn.responseCode !in 200..299) {
+            throw Exception("获取密钥失败: HTTP ${conn.responseCode}")
+        }
         val key = conn.inputStream.readBytes()
         conn.disconnect()
         return key

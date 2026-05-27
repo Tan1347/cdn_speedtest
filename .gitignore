@@ -37,3 +37,6 @@ signing.properties
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# Example
+example/
