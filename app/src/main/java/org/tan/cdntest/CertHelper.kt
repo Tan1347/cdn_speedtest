@@ -58,6 +58,7 @@ object CertHelper {
         )
     }
 
+    @Suppress("DEPRECATION")
     private fun parseFromSslCert(cert: SslCertificate): CertInfo? {
         val toDName = cert.issuedTo ?: return null
         val byDName = cert.issuedBy ?: return null

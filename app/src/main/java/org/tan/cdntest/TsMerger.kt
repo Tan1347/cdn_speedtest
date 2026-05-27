@@ -22,8 +22,7 @@ object TsMerger {
         context: Context,
         segments: List<TsDownloadResult>,
         outputName: String,
-        format: TsOutputFormat,
-        onProgress: ((percent: Int) -> Unit)? = null
+        format: TsOutputFormat
     ): File? {
         val tempDir = File(context.cacheDir, "ts_temp_${System.currentTimeMillis()}")
         tempDir.mkdirs()

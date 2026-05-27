@@ -4,7 +4,6 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.widget.Toast
 import androidx.core.content.FileProvider
@@ -159,7 +158,8 @@ object DownloadHelper {
             } catch (_: Exception) {}
         }
 
-        // 方法3: 使用 ACTION_INSTALL_PACKAGE
+        // 方法3: 使用 ACTION_INSTALL_PACKAGE (deprecated but needed for older devices)
+        @Suppress("DEPRECATION")
         try {
             val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                 data = contentUri

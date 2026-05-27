@@ -6,10 +6,11 @@ import android.content.Intent
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
+
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -23,7 +24,6 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
-import kotlin.math.abs
 
 class PreviewPlayerActivity : AppCompatActivity() {
 
@@ -72,10 +72,18 @@ class PreviewPlayerActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.let {
+                it.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
+        }
 
         setContentView(R.layout.activity_preview_player)
 
@@ -290,13 +298,8 @@ class PreviewPlayerActivity : AppCompatActivity() {
         val visibility = if (controlsVisible) View.VISIBLE else View.GONE
         layoutTop.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(200).start()
         layoutBottom.animate().alpha(if (controlsVisible) 1f else 0f).setDuration(200).start()
-        if (!controlsVisible) {
-            layoutTop.visibility = View.GONE
-            layoutBottom.visibility = View.GONE
-        } else {
-            layoutTop.visibility = View.VISIBLE
-            layoutBottom.visibility = View.VISIBLE
-        }
+        layoutTop.visibility = visibility
+        layoutBottom.visibility = visibility
     }
 
     private fun formatTime(ms: Int): String {
