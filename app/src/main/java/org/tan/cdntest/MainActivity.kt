@@ -121,7 +121,13 @@ class MainActivity : AppCompatActivity() {
                 val scheme = request.url.scheme
                 // 拦截文件下载链接
                 if ((scheme == "http" || scheme == "https") && isDownloadUrl(url)) {
-                    showDownloadConfirm(url, guessDownloadMimeType(url))
+                    if (url.lowercase().contains(".m3u8")) {
+                        startActivity(Intent(this@MainActivity, CdnSnifferActivity::class.java).apply {
+                            putExtra("url", url)
+                        })
+                    } else {
+                        showDownloadConfirm(url, guessDownloadMimeType(url))
+                    }
                     return true
                 }
                 if (scheme == "http" || scheme == "https") {
@@ -172,7 +178,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.setDownloadListener { url, _, _, mimeType, _ ->
-            showDownloadConfirm(url, mimeType)
+            if (url.lowercase().contains(".m3u8")) {
+                startActivity(Intent(this, CdnSnifferActivity::class.java).apply {
+                    putExtra("url", url)
+                })
+            } else {
+                showDownloadConfirm(url, mimeType)
+            }
         }
     }
 
@@ -224,7 +236,7 @@ class MainActivity : AppCompatActivity() {
     private fun isDownloadUrl(url: String): Boolean {
         val lower = url.lowercase()
         val exts = listOf(".apk", ".zip", ".rar", ".7z", ".tar", ".gz", ".dmg", ".exe", ".msi",
-            ".mp4", ".avi", ".mkv", ".mov", ".flv", ".wmv", ".webm",
+            ".mp4", ".avi", ".mkv", ".mov", ".flv", ".wmv", ".webm", ".m3u8",
             ".mp3", ".wav", ".ogg", ".flac", ".aac", ".pdf")
         return exts.any { ext ->
             val idx = lower.indexOf(ext)

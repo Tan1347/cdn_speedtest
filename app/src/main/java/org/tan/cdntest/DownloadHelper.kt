@@ -48,6 +48,17 @@ object DownloadHelper {
         prefs.edit().putBoolean("use_system_engine", useSystem).apply()
     }
 
+    fun getTsFormat(context: Context): TsOutputFormat {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        val name = prefs.getString("ts_format", TsOutputFormat.ORIGINAL.name) ?: TsOutputFormat.ORIGINAL.name
+        return try { TsOutputFormat.valueOf(name) } catch (_: Exception) { TsOutputFormat.ORIGINAL }
+    }
+
+    fun setTsFormat(context: Context, format: TsOutputFormat) {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("ts_format", format.name).apply()
+    }
+
     fun getDownloadedFiles(context: Context): List<File> {
         val dir = getDownloadDir(context)
         return dir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()

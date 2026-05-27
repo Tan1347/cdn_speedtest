@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
@@ -20,6 +21,7 @@ import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ProgressBar
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -28,6 +30,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 
 class CdnSnifferActivity : AppCompatActivity() {
@@ -48,6 +55,7 @@ class CdnSnifferActivity : AppCompatActivity() {
     private var currentFilter = "all"
     private var currentUrl = ""
     private var hasSslError = false
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -107,7 +115,11 @@ class CdnSnifferActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
                 if (isDownloadUrl(url)) {
-                    showDownloadConfirm(url, guessMimeType(url))
+                    if (url.lowercase().contains(".m3u8")) {
+                        showVideoDownloadDialog(SnifferResult(url = url, type = "video", isM3u8 = true))
+                    } else {
+                        showDownloadConfirm(url, guessMimeType(url))
+                    }
                     return true
                 }
                 return false
@@ -150,7 +162,11 @@ class CdnSnifferActivity : AppCompatActivity() {
         }
 
         webView.setDownloadListener { url, _, _, mimeType, _ ->
-            showDownloadConfirm(url, mimeType)
+            if (url.lowercase().contains(".m3u8")) {
+                showVideoDownloadDialog(SnifferResult(url = url, type = "video", isM3u8 = true))
+            } else {
+                showDownloadConfirm(url, mimeType)
+            }
         }
     }
 
@@ -290,7 +306,13 @@ class CdnSnifferActivity : AppCompatActivity() {
     private fun setupResultList() {
         adapter = CdnSnifferAdapter(
             onCopy = { url -> copyToClipboard(url) },
-            onDownload = { url -> showDownloadConfirm(url, guessMimeType(url)) }
+            onDownload = { result ->
+                if (result.type == "video") {
+                    showVideoDownloadDialog(result)
+                } else {
+                    showDownloadConfirm(result.url, guessMimeType(result.url))
+                }
+            }
         )
         rvResults.layoutManager = LinearLayoutManager(this)
         rvResults.adapter = adapter
@@ -322,6 +344,7 @@ class CdnSnifferActivity : AppCompatActivity() {
             var h = e.href;
             if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?|#|$)/i.test(h)) add(h, 'image');
             else if (/\.(mp4|avi|mkv|mov|flv|wmv|webm|m4v)(\?|#|$)/i.test(h)) add(h, 'video');
+            else if (/\.(m3u8)(\?|#|$)/i.test(h)) add(h, 'video');
             else if (/\.(mp3|wav|ogg|flac|aac|m4a)(\?|#|$)/i.test(h)) add(h, 'audio');
             else if (/\.(apk|zip|rar|7z|tar|gz|dmg|exe|msi|deb|rpm)(\?|#|$)/i.test(h)) add(h, 'download');
           });
@@ -344,15 +367,47 @@ class CdnSnifferActivity : AppCompatActivity() {
                 allResults.clear()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
-                    allResults.add(SnifferResult(obj.getString("url"), obj.getString("type")))
+                    val url = obj.getString("url")
+                    val type = obj.getString("type")
+                    val isM3u8 = url.lowercase().contains(".m3u8")
+                    allResults.add(SnifferResult(url = url, type = type, isM3u8 = isM3u8))
                 }
                 layoutSnifferPanel.visibility = View.VISIBLE
                 applyFilter()
                 AppLogger.i(this, "CdnSniffer", "嗅探完成，发现 ${allResults.size} 个资源")
+                fetchVideoInfoForResults()
             } catch (e: Exception) {
                 Toast.makeText(this, "嗅探失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun fetchVideoInfoForResults() {
+        val videoResults = allResults.filter { it.type == "video" && (it.duration == 0L || it.isM3u8) }
+        if (videoResults.isEmpty()) return
+
+        scope.launch(Dispatchers.IO) {
+            for (result in videoResults) {
+                try {
+                    val info = VideoInfoFetcher.fetch(result.url, result.isM3u8)
+                    if (info != null) {
+                        val idx = allResults.indexOfFirst { it.url == result.url }
+                        if (idx >= 0) {
+                            allResults[idx] = result.copy(
+                                duration = info.duration,
+                                estimatedSize = info.estimatedSize,
+                                thumbnail = info.thumbnail
+                            )
+                            launch(Dispatchers.Main) { adapter.updateData(getFilteredResults()) }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private fun getFilteredResults(): List<SnifferResult> {
+        return if (currentFilter == "all") allResults else allResults.filter { it.type == currentFilter }
     }
 
     private fun addDownloadResult(url: String) {
@@ -360,26 +415,27 @@ class CdnSnifferActivity : AppCompatActivity() {
             val type = when {
                 url.matches(Regex(".*\\.(jpg|jpeg|png|gif|webp|svg|bmp)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "image"
                 url.matches(Regex(".*\\.(mp4|avi|mkv|mov|flv|wmv|webm)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "video"
+                url.matches(Regex(".*\\.(m3u8)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "video"
                 url.matches(Regex(".*\\.(mp3|wav|ogg|flac|aac)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "audio"
                 url.matches(Regex(".*\\.(apk|zip|rar|7z|tar|gz)(\\?|#|$).*", RegexOption.IGNORE_CASE)) -> "download"
                 else -> "download"
             }
-            allResults.add(0, SnifferResult(url, type))
+            val isM3u8 = url.lowercase().contains(".m3u8")
+            allResults.add(0, SnifferResult(url = url, type = type, isM3u8 = isM3u8))
             layoutSnifferPanel.visibility = View.VISIBLE
             applyFilter()
         }
     }
 
     private fun applyFilter() {
-        val filtered = if (currentFilter == "all") allResults else allResults.filter { it.type == currentFilter }
-        adapter.updateData(filtered)
-        tvResultCount.text = "共 ${filtered.size} 个资源"
+        adapter.updateData(getFilteredResults())
+        tvResultCount.text = "共 ${getFilteredResults().size} 个资源"
     }
 
     private fun isDownloadUrl(url: String): Boolean {
         val lower = url.lowercase()
         val exts = listOf(".apk",".zip",".rar",".7z",".tar",".gz",".dmg",".exe",".msi",".deb",".rpm",
-            ".mp4",".avi",".mkv",".mov",".flv",".wmv",".webm",".m4v",
+            ".mp4",".avi",".mkv",".mov",".flv",".wmv",".webm",".m4v",".m3u8",
             ".mp3",".wav",".ogg",".flac",".aac",".m4a",".pdf",".doc",".docx",".xls",".xlsx")
         return exts.any { ext ->
             val idx = lower.indexOf(ext)
@@ -439,6 +495,126 @@ class CdnSnifferActivity : AppCompatActivity() {
         }
     }
 
+    private fun showVideoDownloadDialog(result: SnifferResult) {
+        val fileName = Uri.parse(result.url).lastPathSegment ?: "video"
+        val cleanName = fileName.split("?")[0].split("#")[0]
+
+        val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_video_download, null)
+        val ivThumbnail = dialogView.findViewById<android.widget.ImageView>(R.id.ivThumbnail)
+        val tvFileName = dialogView.findViewById<TextView>(R.id.tvFileName)
+        val tvDuration = dialogView.findViewById<TextView>(R.id.tvDuration)
+        val tvSize = dialogView.findViewById<TextView>(R.id.tvSize)
+        val tvResolution = dialogView.findViewById<TextView>(R.id.tvResolution)
+        val rgFormat = dialogView.findViewById<RadioGroup>(R.id.rgFormat)
+
+        tvFileName.text = cleanName
+        if (result.duration > 0) tvDuration.text = "时长: ${VideoInfoFetcher.formatDuration(result.duration)}"
+        else tvDuration.text = "时长: 获取中..."
+        if (result.estimatedSize > 0) tvSize.text = "大小: ${DownloadHelper.formatFileSize(result.estimatedSize)}"
+        else tvSize.text = "大小: 获取中..."
+        tvResolution.text = if (result.isM3u8) "格式: HLS (M3U8)" else "格式: 直链视频"
+        if (result.thumbnail != null) ivThumbnail.setImageBitmap(result.thumbnail)
+
+        // Set default format from settings
+        val savedFormat = DownloadHelper.getTsFormat(this)
+        rgFormat.check(when (savedFormat) {
+            TsOutputFormat.ORIGINAL -> R.id.rbOriginal
+            TsOutputFormat.MP4 -> R.id.rbMp4
+            TsOutputFormat.H264 -> R.id.rbH264
+            TsOutputFormat.HEVC -> R.id.rbHevc
+            TsOutputFormat.AV1 -> R.id.rbAv1
+        })
+
+        AlertDialog.Builder(this)
+            .setTitle("下载视频")
+            .setView(dialogView)
+            .setPositiveButton("下载") { _, _ ->
+                val format = when (rgFormat.checkedRadioButtonId) {
+                    R.id.rbMp4 -> TsOutputFormat.MP4
+                    R.id.rbH264 -> TsOutputFormat.H264
+                    R.id.rbHevc -> TsOutputFormat.HEVC
+                    R.id.rbAv1 -> TsOutputFormat.AV1
+                    else -> TsOutputFormat.ORIGINAL
+                }
+                if (result.isM3u8) {
+                    startM3u8Download(result.url, cleanName, format)
+                } else {
+                    startDownload(result.url, guessMimeType(result.url))
+                }
+            }
+            .setNeutralButton("复制链接") { _, _ -> copyToClipboard(result.url) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun startM3u8Download(url: String, fileName: String, format: TsOutputFormat) {
+        val progressDialog = android.app.ProgressDialog(this).apply {
+            setTitle("下载 M3U8 视频")
+            setMessage("解析播放列表...")
+            setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
+            isIndeterminate = false
+            setCancelable(false)
+            show()
+        }
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                val m3u8Info = M3u8Parser.fetchAndParse(url)
+                if (m3u8Info == null || m3u8Info.segments.isEmpty()) {
+                    launch(Dispatchers.Main) {
+                        progressDialog.dismiss()
+                        Toast.makeText(this@CdnSnifferActivity, "M3U8 解析失败", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                launch(Dispatchers.Main) {
+                    progressDialog.max = m3u8Info.segments.size
+                    progressDialog.setMessage("下载 ${m3u8Info.segments.size} 个分片...")
+                }
+
+                val results = TsDownloader.download(m3u8Info.segments, m3u8Info.keyInfo) { downloaded, total ->
+                    launch(Dispatchers.Main) {
+                        progressDialog.progress = downloaded
+                        progressDialog.setMessage("下载分片 $downloaded/$total")
+                    }
+                }
+
+                launch(Dispatchers.Main) {
+                    progressDialog.setMessage("合并转码中...")
+                    progressDialog.isIndeterminate = true
+                }
+
+                val outputFile = TsMerger.merge(this@CdnSnifferActivity, results, fileName, format) { percent ->
+                    launch(Dispatchers.Main) {
+                        progressDialog.setMessage("合并转码 $percent%")
+                    }
+                }
+
+                launch(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (outputFile != null) {
+                        DownloadRecordStore.add(this@CdnSnifferActivity, DownloadRecord(
+                            name = outputFile.name,
+                            url = url,
+                            path = outputFile.absolutePath,
+                            size = outputFile.length(),
+                            date = System.currentTimeMillis()
+                        ))
+                        Toast.makeText(this@CdnSnifferActivity, "下载完成: ${outputFile.name}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@CdnSnifferActivity, "合并转码失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                launch(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@CdnSnifferActivity, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     private fun copyToClipboard(url: String) {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
@@ -458,6 +634,7 @@ class CdnSnifferActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        scope.cancel()
         AppLogger.flush()
         super.onDestroy()
     }

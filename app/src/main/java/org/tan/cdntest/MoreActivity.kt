@@ -56,6 +56,7 @@ class MoreActivity : AppCompatActivity() {
         setupLogSection()
         setupDownloadDirSection()
         setupDownloadEngineSection()
+        setupTsFormatSection()
         setupHostsSection()
         setupVersionSection()
     }
@@ -277,6 +278,32 @@ class MoreActivity : AppCompatActivity() {
             val useSystem = checkedId == R.id.rbSystemEngine
             DownloadHelper.setUseSystemEngine(this, useSystem)
             Toast.makeText(this, if (useSystem) "已切换到系统下载器" else "已切换到应用内下载器", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // --- TS Format ---
+    private fun setupTsFormatSection() {
+        val rgTsFormat = findViewById<RadioGroup>(R.id.rgTsFormat)
+        val current = DownloadHelper.getTsFormat(this)
+        rgTsFormat.check(when (current) {
+            TsOutputFormat.ORIGINAL -> R.id.rbTsOriginal
+            TsOutputFormat.MP4 -> R.id.rbTsMp4
+            TsOutputFormat.H264 -> R.id.rbTsH264
+            TsOutputFormat.HEVC -> R.id.rbTsHevc
+            TsOutputFormat.AV1 -> R.id.rbTsAv1
+        })
+
+        rgTsFormat.setOnCheckedChangeListener { _, checkedId ->
+            val format = when (checkedId) {
+                R.id.rbTsOriginal -> TsOutputFormat.ORIGINAL
+                R.id.rbTsMp4 -> TsOutputFormat.MP4
+                R.id.rbTsH264 -> TsOutputFormat.H264
+                R.id.rbTsHevc -> TsOutputFormat.HEVC
+                R.id.rbTsAv1 -> TsOutputFormat.AV1
+                else -> TsOutputFormat.ORIGINAL
+            }
+            DownloadHelper.setTsFormat(this, format)
+            Toast.makeText(this, "TS 格式: ${format.label}", Toast.LENGTH_SHORT).show()
         }
     }
 

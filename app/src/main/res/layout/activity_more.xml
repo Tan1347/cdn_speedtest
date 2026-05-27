@@ -324,6 +324,68 @@
                             android:textSize="14sp"
                             android:textColor="@color/text_primary" />
                     </RadioGroup>
+
+                    <!-- 分隔线 -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginVertical="12dp"
+                        android:background="@color/divider" />
+
+                    <!-- TS 合并格式 -->
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="TS 合并格式"
+                        android:textSize="14sp"
+                        android:textColor="@color/text_secondary" />
+
+                    <RadioGroup
+                        android:id="@+id/rgTsFormat"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp">
+
+                        <RadioButton
+                            android:id="@+id/rbTsOriginal"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="原格式 (.ts)"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbTsMp4"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="MP4 容器"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbTsH264"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="H.264 编码 (.mp4)"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbTsHevc"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="H.265/HEVC 编码 (.mp4)"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary" />
+
+                        <RadioButton
+                            android:id="@+id/rbTsAv1"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="AV1 编码 (.mp4)"
+                            android:textSize="14sp"
+                            android:textColor="@color/text_primary" />
+                    </RadioGroup>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

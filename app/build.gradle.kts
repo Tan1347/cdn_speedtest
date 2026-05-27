@@ -74,6 +74,7 @@ dependencies {
 
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("org.tukaani:xz:1.9")
+    implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
 
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")
