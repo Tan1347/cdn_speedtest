@@ -183,6 +183,11 @@ class MainActivity : AppCompatActivity() {
             .setTitle("下载确认")
             .setMessage("是否下载以下文件？\n\n$cleanName")
             .setPositiveButton("下载") { _, _ -> startDownload(url, mimeType) }
+            .setNeutralButton("复制链接") { _, _ ->
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
+                Toast.makeText(this, "已复制链接", Toast.LENGTH_SHORT).show()
+            }
             .setNegativeButton("取消", null)
             .show()
     }
@@ -192,14 +197,22 @@ class MainActivity : AppCompatActivity() {
             val fileName = Uri.parse(url).lastPathSegment ?: "download_${System.currentTimeMillis()}"
             val cleanName = fileName.split("?")[0].split("#")[0]
             val downloadDir = DownloadHelper.getDownloadDir(this)
+            val destFile = java.io.File(downloadDir, cleanName)
             val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
             val request = android.app.DownloadManager.Request(Uri.parse(url))
                 .setTitle(cleanName)
                 .setDescription("正在下载...")
                 .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationUri(Uri.fromFile(java.io.File(downloadDir, cleanName)))
+                .setDestinationUri(Uri.fromFile(destFile))
                 .setMimeType(mimeType ?: "application/octet-stream")
             dm.enqueue(request)
+            DownloadRecordStore.add(this, DownloadRecord(
+                name = cleanName,
+                url = url,
+                path = destFile.absolutePath,
+                size = 0,
+                date = System.currentTimeMillis()
+            ))
             Toast.makeText(this, "开始下载: $cleanName", Toast.LENGTH_SHORT).show()
             AppLogger.i(this, "MainActivity", "触发下载: $cleanName, URL: $url")
         } catch (e: Exception) {

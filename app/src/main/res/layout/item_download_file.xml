@@ -47,6 +47,6 @@
         android:layout_height="36dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_copy"
-        android:contentDescription="复制路径"
+        android:contentDescription="复制链接"
         app:tint="@color/text_secondary" />
 </LinearLayout>

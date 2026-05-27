@@ -407,6 +407,7 @@ class CdnSnifferActivity : AppCompatActivity() {
             .setTitle("下载确认")
             .setMessage("是否下载以下文件？\n\n$cleanName")
             .setPositiveButton("下载") { _, _ -> startDownload(url, mimeType) }
+            .setNeutralButton("复制链接") { _, _ -> copyToClipboard(url) }
             .setNegativeButton("取消", null)
             .show()
     }
@@ -416,14 +417,22 @@ class CdnSnifferActivity : AppCompatActivity() {
             val fileName = Uri.parse(url).lastPathSegment ?: "download_${System.currentTimeMillis()}"
             val cleanName = fileName.split("?")[0].split("#")[0]
             val downloadDir = DownloadHelper.getDownloadDir(this)
+            val destFile = java.io.File(downloadDir, cleanName)
             val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val request = DownloadManager.Request(Uri.parse(url))
                 .setTitle(cleanName)
                 .setDescription("正在下载...")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationUri(Uri.fromFile(java.io.File(downloadDir, cleanName)))
+                .setDestinationUri(Uri.fromFile(destFile))
                 .setMimeType(mimeType ?: "application/octet-stream")
             dm.enqueue(request)
+            DownloadRecordStore.add(this, DownloadRecord(
+                name = cleanName,
+                url = url,
+                path = destFile.absolutePath,
+                size = 0,
+                date = System.currentTimeMillis()
+            ))
             Toast.makeText(this, "开始下载: $cleanName", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()

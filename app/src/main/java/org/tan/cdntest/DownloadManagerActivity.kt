@@ -94,10 +94,11 @@ class DownloadManagerActivity : AppCompatActivity() {
             selectedIndices = selectedIndices,
             onSelectionChanged = { updateButtonState() },
             onCopy = { item ->
-                val path = item.path
+                val text = item.url ?: item.path
+                val label = if (item.url != null) "已复制链接" else "已复制路径"
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("path", path))
-                Toast.makeText(this, "已复制路径", Toast.LENGTH_SHORT).show()
+                clipboard.setPrimaryClip(ClipData.newPlainText("url", text))
+                Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
             }
         )
         rvFiles.layoutManager = LinearLayoutManager(this)
@@ -133,11 +134,16 @@ class DownloadManagerActivity : AppCompatActivity() {
         fileList.clear()
         selectedIndices.clear()
 
+        val records = DownloadRecordStore.getAll(this)
+
         when (currentSource) {
             0, 1 -> {
                 val files = DownloadHelper.getDownloadedFiles(this)
                 tvCurrentDir.text = "目录: ${DownloadHelper.getDownloadDir(this).absolutePath}"
-                files.forEach { fileList.add(FileItem.fromFile(it)) }
+                files.forEach { file ->
+                    val record = records.find { it.path == file.absolutePath || it.name == file.name }
+                    fileList.add(FileItem.fromFile(file, record?.url))
+                }
                 btnSelectAll.visibility = View.VISIBLE
             }
             2 -> {
@@ -180,17 +186,19 @@ data class FileItem(
     val path: String,
     val size: Long,
     val date: Long,
-    val isFile: Boolean
+    val isFile: Boolean,
+    val url: String? = null
 ) {
     companion object {
         private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
-        fun fromFile(file: File) = FileItem(
+        fun fromFile(file: File, url: String? = null) = FileItem(
             name = file.name,
             path = file.absolutePath,
             size = file.length(),
             date = file.lastModified(),
-            isFile = true
+            isFile = true,
+            url = url
         )
 
         fun fromSystemDownload(dl: SystemDownload) = FileItem(
