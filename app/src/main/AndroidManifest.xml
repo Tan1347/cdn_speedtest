@@ -52,6 +52,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".DownloadSettingsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".BrowserSettingsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".HostsTestActivity"
             android:exported="false" />
 

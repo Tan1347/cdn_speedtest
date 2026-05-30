@@ -180,6 +180,10 @@ class PreviewPlayerActivity : AppCompatActivity() {
     }
 
     private fun setupVideoPlayer() {
+        // Read player kernel preference (EXO/IJK)
+        // When ExoPlayer/IJKPlayer libraries are integrated, branch here:
+        // val kernel = DownloadHelper.getPlayerKernel(this)
+        // when (kernel) { "exo" -> setupExoPlayer(); "ijk" -> setupIjkPlayer() }
         videoView.visibility = View.VISIBLE
         layoutAudio.visibility = View.GONE
 

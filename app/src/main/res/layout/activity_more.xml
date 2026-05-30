@@ -27,7 +27,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- 浏览器标识 -->
+            <!-- 浏览器设置 -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -36,78 +36,43 @@
                 app:cardElevation="2dp">
 
                 <LinearLayout
+                    android:id="@+id/layoutBrowserSettings"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:padding="16dp"
+                    android:background="?attr/selectableItemBackground">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="浏览器设置"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/text_primary" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="浏览器标识、搜索引擎"
+                            android:textSize="13sp"
+                            android:textColor="@color/text_secondary" />
+                    </LinearLayout>
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="浏览器标识"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary" />
-
-                    <TextView
-                        android:id="@+id/tvCurrentUa"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary"
-                        android:maxLines="2"
-                        android:ellipsize="end" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnChangeUa"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="切换标识"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        app:cornerRadius="8dp" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- 搜索引擎 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="2dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="搜索引擎"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary" />
-
-                    <TextView
-                        android:id="@+id/tvCurrentEngine"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:textSize="14sp"
+                        android:text="›"
+                        android:textSize="20sp"
                         android:textColor="@color/text_secondary" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnChangeEngine"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="切换搜索引擎"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                        app:cornerRadius="8dp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -133,7 +98,9 @@
                         android:textStyle="bold"
                         android:textColor="@color/text_primary" />
 
+                    <!-- 启用日志开关 -->
                     <LinearLayout
+                        android:id="@+id/layoutLogSwitch"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
@@ -154,238 +121,40 @@
                             android:layout_height="wrap_content" />
                     </LinearLayout>
 
+                    <!-- 日志等级 -->
                     <LinearLayout
                         android:id="@+id/layoutLogLevel"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:orientation="vertical"
+                        android:background="?attr/selectableItemBackground"
+                        android:paddingVertical="2dp"
                         android:visibility="gone">
 
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="1dp"
-                            android:background="@color/divider" />
-
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
                             android:text="日志等级"
                             android:textSize="14sp"
-                            android:textColor="@color/text_secondary" />
-
-                        <RadioGroup
-                            android:id="@+id/rgLogLevel"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp">
-
-                            <RadioButton
-                                android:id="@+id/rbDebug"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="Debug (全部日志)"
-                                android:textSize="14sp"
-                                android:textColor="@color/text_primary" />
-
-                            <RadioButton
-                                android:id="@+id/rbInfo"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="Info (默认)"
-                                android:textSize="14sp"
-                                android:textColor="@color/text_primary" />
-
-                            <RadioButton
-                                android:id="@+id/rbWarn"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="Warning (警告及以上)"
-                                android:textSize="14sp"
-                                android:textColor="@color/text_primary" />
-
-                            <RadioButton
-                                android:id="@+id/rbError"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:text="Error (仅错误)"
-                                android:textSize="14sp"
-                                android:textColor="@color/text_primary" />
-                        </RadioGroup>
+                            android:textColor="@color/text_primary" />
 
                         <TextView
-                            android:id="@+id/tvLogDir"
+                            android:id="@+id/tvLogLevel"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:textSize="12sp"
+                            android:layout_marginTop="2dp"
+                            android:textSize="13sp"
                             android:textColor="@color/text_secondary" />
                     </LinearLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- 下载设置 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="2dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
 
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="下载设置"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:textColor="@color/text_primary" />
-
-                    <!-- 下载目录 -->
-                    <TextView
+                        android:id="@+id/tvLogDir"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="下载目录"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary" />
-
-                    <RadioGroup
-                        android:id="@+id/rgDownloadDir"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp">
-
-                        <RadioButton
-                            android:id="@+id/rbAppDir"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="应用内部目录"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbSystemDir"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="系统下载目录 (/sdcard/Download/cdntest)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-                    </RadioGroup>
-
-                    <TextView
-                        android:id="@+id/tvCurrentDir"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="6dp"
                         android:textSize="12sp"
                         android:textColor="@color/text_secondary" />
-
-                    <!-- 分隔线 -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginVertical="12dp"
-                        android:background="@color/divider" />
-
-                    <!-- TS 合并格式 -->
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="TS 合并格式"
-                        android:textSize="14sp"
-                        android:textColor="@color/text_secondary" />
-
-                    <RadioGroup
-                        android:id="@+id/rgTsFormat"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp">
-
-                        <RadioButton
-                            android:id="@+id/rbTsOriginal"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="原格式 (.ts)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbTsMp4"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="MP4 容器"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbTsH264"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="H.264 编码 (.mp4)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbTsHevc"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="H.265/HEVC 编码 (.mp4)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-
-                        <RadioButton
-                            android:id="@+id/rbTsAv1"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="AV1 编码 (.mp4)"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-                    </RadioGroup>
-
-                    <!-- 分隔线 -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginVertical="12dp"
-                        android:background="@color/divider" />
-
-                    <!-- 下载线程数 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="下载线程数"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_secondary" />
-
-                        <TextView
-                            android:id="@+id/tvThreadCount"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textSize="14sp"
-                            android:textColor="@color/text_primary" />
-                    </LinearLayout>
-
-                    <SeekBar
-                        android:id="@+id/seekBarThreads"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:min="1"
-                        android:max="8" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

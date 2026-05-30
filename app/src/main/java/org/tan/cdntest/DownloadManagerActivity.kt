@@ -1,9 +1,11 @@
 package org.tan.cdntest
 
-import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -13,226 +15,351 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.chip.Chip
-import com.google.android.material.chip.ChipGroup
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
 
-    private lateinit var rvFiles: RecyclerView
-    private lateinit var tvEmpty: TextView
-    private lateinit var btnDelete: MaterialButton
-    private lateinit var btnSelectAll: MaterialButton
-    private lateinit var btnPauseAll: MaterialButton
-    private lateinit var btnResumeAll: MaterialButton
-    private lateinit var chipGroupSource: ChipGroup
+    private lateinit var toolbar: MaterialToolbar
     private lateinit var tvCurrentDir: TextView
     private lateinit var progressStorage: ProgressBar
     private lateinit var tvStorageInfo: TextView
     private lateinit var layoutActiveDownloads: View
     private lateinit var rvActiveDownloads: RecyclerView
+    private lateinit var tvEmpty: TextView
+    private lateinit var rvFiles: RecyclerView
+    private lateinit var btnPauseAll: MaterialButton
+    private lateinit var btnResumeAll: MaterialButton
+    private lateinit var btnSelectAll: MaterialButton
+    private lateinit var btnDelete: MaterialButton
 
     private lateinit var adapter: DownloadFileAdapter
-    private lateinit var activeAdapter: ActiveDownloadAdapter
     private val fileList = mutableListOf<FileItem>()
     private val selectedIndices = mutableSetOf<Int>()
-    private var currentSource = 0 // 0=app dir, 1=system dir, 2=system DM
-
-    private val handler = Handler(Looper.getMainLooper())
-    private val refreshRunnable = object : Runnable {
-        override fun run() {
-            refreshActiveDownloads()
-            handler.postDelayed(this, 1000)
-        }
-    }
+    private var isDeleteMode = false
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private lateinit var activeAdapter: ActiveDownloadAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_download_manager)
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
-        toolbar.setNavigationOnClickListener { finish() }
-
-        rvFiles = findViewById(R.id.rvFiles)
-        tvEmpty = findViewById(R.id.tvEmpty)
-        btnDelete = findViewById(R.id.btnDelete)
-        btnSelectAll = findViewById(R.id.btnSelectAll)
-        btnPauseAll = findViewById(R.id.btnPauseAll)
-        btnResumeAll = findViewById(R.id.btnResumeAll)
-        chipGroupSource = findViewById(R.id.chipGroupSource)
+        toolbar = findViewById(R.id.toolbar)
         tvCurrentDir = findViewById(R.id.tvCurrentDir)
         progressStorage = findViewById(R.id.progressStorage)
         tvStorageInfo = findViewById(R.id.tvStorageInfo)
         layoutActiveDownloads = findViewById(R.id.layoutActiveDownloads)
         rvActiveDownloads = findViewById(R.id.rvActiveDownloads)
+        tvEmpty = findViewById(R.id.tvEmpty)
+        rvFiles = findViewById(R.id.rvFiles)
+        btnPauseAll = findViewById(R.id.btnPauseAll)
+        btnResumeAll = findViewById(R.id.btnResumeAll)
+        btnSelectAll = findViewById(R.id.btnSelectAll)
+        btnDelete = findViewById(R.id.btnDelete)
 
-        setupChipSource()
+        toolbar.setNavigationOnClickListener { finish() }
+
+        // Toolbar menu
+        toolbar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_delete_mode -> {
+                    enterDeleteMode()
+                    true
+                }
+                R.id.action_settings -> {
+                    startActivity(Intent(this, DownloadSettingsActivity::class.java))
+                    true
+                }
+                else -> false
+            }
+        }
+
         setupList()
         setupButtons()
+        setupActiveDownloads()
+        loadFiles()
     }
 
     override fun onResume() {
         super.onResume()
-        DownloadEngine.addListener(this)
-        handler.post(refreshRunnable)
         loadFiles()
+        startRefreshLoop()
     }
 
     override fun onPause() {
-        handler.removeCallbacks(refreshRunnable)
-        DownloadEngine.removeListener(this)
         super.onPause()
+        refreshHandler.removeCallbacksAndMessages(null)
     }
 
-    private fun setupChipSource() {
-        val savedSource = when {
-            DownloadHelper.isSystemDir(this) -> R.id.chipSystemDir
-            else -> R.id.chipAppDir
-        }
-        chipGroupSource.check(savedSource)
-        currentSource = when (savedSource) {
-            R.id.chipSystemDir -> 1
-            R.id.chipSystemDm -> 2
-            else -> 0
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        DownloadEngine.removeListener(this)
+    }
 
-        chipGroupSource.setOnCheckedStateChangeListener { _, checkedIds ->
-            if (checkedIds.isNotEmpty()) {
-                currentSource = when (checkedIds[0]) {
-                    R.id.chipAppDir -> { DownloadHelper.setUseSystemDir(this, false); 0 }
-                    R.id.chipSystemDir -> { DownloadHelper.setUseSystemDir(this, true); 1 }
-                    R.id.chipSystemDm -> 2
-                    else -> 0
-                }
-                selectedIndices.clear()
-                loadFiles()
-            }
+    override fun onBackPressed() {
+        if (isDeleteMode) {
+            exitDeleteMode()
+        } else {
+            super.onBackPressed()
         }
     }
 
+    // --- DownloadListener ---
+    override fun onProgress(task: DownloadTask) {
+        refreshActiveDownloads()
+    }
+
+    override fun onComplete(task: DownloadTask) {
+        refreshActiveDownloads()
+        loadFiles()
+    }
+
+    override fun onFailed(task: DownloadTask, error: String) {
+        refreshActiveDownloads()
+        Toast.makeText(this, "下载失败: ${task.fileName} - $error", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onCancelled(task: DownloadTask) {
+        refreshActiveDownloads()
+    }
+
+    // --- Setup ---
     private fun setupList() {
-        // Active downloads adapter
-        activeAdapter = ActiveDownloadAdapter(
-            items = emptyList(),
-            onPauseResume = { task ->
-                if (task.status == DownloadStatus.RUNNING) {
-                    DownloadEngine.pause(task.url)
-                } else if (task.status == DownloadStatus.PAUSED) {
-                    DownloadEngine.resume(this, task.url)
-                }
-                refreshActiveDownloads()
-            },
-            onCancel = { task ->
-                AlertDialog.Builder(this)
-                    .setTitle("取消下载")
-                    .setMessage("确定取消下载 ${task.fileName}？")
-                    .setPositiveButton("取消下载") { _, _ ->
-                        DownloadEngine.cancel(task.url)
-                        refreshActiveDownloads()
-                    }
-                    .setNegativeButton("返回", null)
-                    .show()
-            }
-        )
-        rvActiveDownloads.layoutManager = LinearLayoutManager(this)
-        rvActiveDownloads.adapter = activeAdapter
-
-        // Completed files adapter
         adapter = DownloadFileAdapter(
             items = fileList,
             selectedIndices = selectedIndices,
+            isDeleteMode = false,
             onSelectionChanged = { updateButtonState() },
-            onCopy = { item ->
-                val text = item.url ?: item.path
-                val label = if (item.url != null) "已复制链接" else "已复制路径"
-                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("url", text))
-                Toast.makeText(this, label, Toast.LENGTH_SHORT).show()
-            }
+            onMore = { item, anchor -> showItemMenu(item, anchor) },
+            onItemClick = { item -> openFile(item) }
         )
         rvFiles.layoutManager = LinearLayoutManager(this)
         rvFiles.adapter = adapter
     }
 
     private fun setupButtons() {
-        btnDelete.setOnClickListener {
-            if (selectedIndices.isEmpty()) {
-                Toast.makeText(this, "请先选择要删除的文件", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+        btnPauseAll.setOnClickListener { DownloadEngine.pauseAll() }
+        btnResumeAll.setOnClickListener { DownloadEngine.resumeAll(this) }
+        btnSelectAll.setOnClickListener { toggleSelectAll() }
+        btnDelete.setOnClickListener { deleteSelected() }
+    }
+
+    private fun setupActiveDownloads() {
+        activeAdapter = ActiveDownloadAdapter(
+            onPauseResume = { task ->
+                when (task.status) {
+                    DownloadStatus.RUNNING -> DownloadEngine.pause(task.url)
+                    DownloadStatus.PAUSED -> DownloadEngine.resume(this, task.url)
+                    else -> {}
+                }
+            },
+            onCancel = { task -> DownloadEngine.cancel(task.url) }
+        )
+        rvActiveDownloads.layoutManager = LinearLayoutManager(this)
+        rvActiveDownloads.adapter = activeAdapter
+        DownloadEngine.addListener(this)
+    }
+
+    // --- Delete Mode ---
+    private fun enterDeleteMode() {
+        isDeleteMode = true
+        adapter.isDeleteMode = true
+        adapter.notifyDataSetChanged()
+        btnSelectAll.visibility = View.VISIBLE
+        btnDelete.visibility = View.VISIBLE
+        btnPauseAll.visibility = View.GONE
+        btnResumeAll.visibility = View.GONE
+        toolbar.menu.findItem(R.id.action_delete_mode)?.isVisible = false
+        toolbar.menu.findItem(R.id.action_settings)?.isVisible = false
+        toolbar.title = "选择文件"
+    }
+
+    private fun exitDeleteMode() {
+        isDeleteMode = false
+        adapter.isDeleteMode = false
+        selectedIndices.clear()
+        adapter.notifyDataSetChanged()
+        btnSelectAll.visibility = View.GONE
+        btnDelete.visibility = View.GONE
+        toolbar.menu.findItem(R.id.action_delete_mode)?.isVisible = true
+        toolbar.menu.findItem(R.id.action_settings)?.isVisible = true
+        toolbar.title = "下载管理"
+        updateButtonState()
+        updateActiveButtons(DownloadEngine.getActiveTasks())
+    }
+
+    private fun toggleSelectAll() {
+        if (selectedIndices.size == fileList.size) {
+            selectedIndices.clear()
+        } else {
+            selectedIndices.clear()
+            fileList.indices.forEach { selectedIndices.add(it) }
+        }
+        adapter.notifyDataSetChanged()
+        updateButtonState()
+    }
+
+    // --- File Operations ---
+    private fun showItemMenu(item: FileItem, anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        popup.menuInflater.inflate(R.menu.menu_file_item, popup.menu)
+        popup.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.action_rename -> { renameFile(item); true }
+                R.id.action_copy_link -> { copyLink(item); true }
+                R.id.action_delete_single -> { deleteSingleFile(item); true }
+                R.id.action_share -> { shareFile(item); true }
+                else -> false
             }
-            AlertDialog.Builder(this)
-                .setTitle("确认删除")
-                .setMessage("确定要删除选中的 ${selectedIndices.size} 个文件吗？")
-                .setPositiveButton("删除") { _, _ -> deleteSelected() }
-                .setNegativeButton("取消", null)
-                .show()
         }
+        popup.show()
+    }
 
-        btnSelectAll.setOnClickListener {
-            if (selectedIndices.size == fileList.size) {
-                selectedIndices.clear()
-            } else {
-                selectedIndices.addAll(fileList.indices)
+    private fun openFile(item: FileItem) {
+        if (item.isFile && FileItem.isVideoFile(item.name)) {
+            val file = File(item.path)
+            if (file.exists()) {
+                val uri = Uri.fromFile(file)
+                PreviewPlayerActivity.start(this, uri.toString(), "video", item.name)
             }
-            adapter.notifyDataSetChanged()
-            updateButtonState()
-        }
-
-        btnPauseAll.setOnClickListener {
-            DownloadEngine.pauseAll()
-            refreshActiveDownloads()
-        }
-
-        btnResumeAll.setOnClickListener {
-            DownloadEngine.resumeAll(this)
-            refreshActiveDownloads()
         }
     }
 
+    private fun renameFile(item: FileItem) {
+        val editText = EditText(this).apply {
+            setText(item.name)
+            val dotIndex = item.name.lastIndexOf('.')
+            if (dotIndex > 0) setSelection(0, dotIndex) else setSelection(item.name.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("重命名")
+            .setView(editText)
+            .setPositiveButton("确定") { _, _ ->
+                val newName = editText.text.toString().trim()
+                if (newName.isNotEmpty() && newName != item.name) {
+                    val oldFile = File(item.path)
+                    val newFile = File(oldFile.parentFile, newName)
+                    if (newFile.exists()) {
+                        Toast.makeText(this, "文件名已存在", Toast.LENGTH_SHORT).show()
+                        return@setPositiveButton
+                    }
+                    if (oldFile.renameTo(newFile)) {
+                        if (item.url != null) {
+                            DownloadRecordStore.deleteByUrl(this, item.url)
+                            DownloadRecordStore.add(this, DownloadRecord(
+                                name = newName, url = item.url,
+                                path = newFile.absolutePath, size = newFile.length(),
+                                date = newFile.lastModified()
+                            ))
+                        }
+                        loadFiles()
+                        Toast.makeText(this, "已重命名", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun copyLink(item: FileItem) {
+        val text = item.url ?: item.path
+        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("url", text))
+        Toast.makeText(this, "已复制链接", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun deleteSingleFile(item: FileItem) {
+        AlertDialog.Builder(this)
+            .setTitle("确认删除")
+            .setMessage("确定要删除 ${item.name} 吗？")
+            .setPositiveButton("删除") { _, _ ->
+                if (item.isFile) {
+                    File(item.path).delete()
+                }
+                if (item.url != null) {
+                    DownloadRecordStore.deleteByUrl(this, item.url)
+                }
+                loadFiles()
+                Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun shareFile(item: FileItem) {
+        if (!item.isFile) return
+        val file = File(item.path)
+        if (!file.exists()) {
+            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+        val mimeType = getMimeType(item.name)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, "分享文件"))
+    }
+
+    private fun getMimeType(fileName: String): String {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "mp4", "mkv", "avi", "flv", "wmv", "mov", "webm", "3gp" -> "video/*"
+            "ts" -> "video/mp2t"
+            "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "ogg" -> "audio/ogg"
+            "flac" -> "audio/flac"
+            "aac" -> "audio/aac"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "pdf" -> "application/pdf"
+            "apk" -> "application/vnd.android.package-archive"
+            "zip" -> "application/zip"
+            else -> "*/*"
+        }
+    }
+
+    // --- Data ---
     private fun loadFiles() {
         fileList.clear()
         selectedIndices.clear()
-        adapter.notifyDataSetChanged()
 
         lifecycleScope.launch {
             val records = withContext(Dispatchers.IO) {
                 DownloadRecordStore.getAll(this@DownloadManagerActivity)
             }
 
-            when (currentSource) {
-                0, 1 -> {
-                    val files = DownloadHelper.getDownloadedFiles(this@DownloadManagerActivity)
-                    tvCurrentDir.text = "目录: ${DownloadHelper.getDownloadDir(this@DownloadManagerActivity).absolutePath}"
-                    files.forEach { file ->
-                        val record = records.find { it.path == file.absolutePath || it.name == file.name }
-                        fileList.add(FileItem.fromFile(file, record?.url))
-                    }
-                    btnSelectAll.visibility = View.VISIBLE
-                }
-                2 -> {
-                    val downloads = DownloadHelper.getSystemDownloadManagerFiles(this@DownloadManagerActivity)
-                    tvCurrentDir.text = "来源: 系统下载管理器"
-                    downloads.forEach { fileList.add(FileItem.fromSystemDownload(it)) }
-                    btnSelectAll.visibility = View.VISIBLE
-                }
+            val dir = DownloadHelper.getDownloadDir(this@DownloadManagerActivity)
+            val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
+
+            tvCurrentDir.text = "目录: ${dir.absolutePath}"
+            files.forEach { file ->
+                val record = records.find { it.path == file.absolutePath || it.name == file.name }
+                fileList.add(FileItem.fromFile(file, record?.url))
             }
 
             adapter.notifyDataSetChanged()
@@ -244,28 +371,36 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
     }
 
     private fun updateStorageInfo() {
-        try {
-            val info = DownloadHelper.getStorageInfo(this)
-            val percent = if (info.total > 0) (info.used * 100 / info.total).toInt() else 0
-            progressStorage.progress = percent
-            tvStorageInfo.text = "已用 ${DownloadHelper.formatFileSize(info.used)} / 共 ${DownloadHelper.formatFileSize(info.total)} (可用 ${DownloadHelper.formatFileSize(info.available)})"
-        } catch (_: Exception) {
-            tvStorageInfo.text = "无法获取存储信息"
-        }
+        val info = DownloadHelper.getStorageInfo(this)
+        val percent = if (info.total > 0) ((info.used.toFloat() / info.total) * 100).toInt() else 0
+        progressStorage.progress = percent
+        tvStorageInfo.text = "${DownloadHelper.formatFileSize(info.used)} / ${DownloadHelper.formatFileSize(info.total)}"
+    }
+
+    private fun updateButtonState() {
+        btnDelete.isEnabled = selectedIndices.isNotEmpty()
+        btnSelectAll.text = if (selectedIndices.size == fileList.size) "取消全选" else "全选"
+    }
+
+    // --- Active Downloads ---
+    private fun startRefreshLoop() {
+        refreshHandler.post(object : Runnable {
+            override fun run() {
+                refreshActiveDownloads()
+                refreshHandler.postDelayed(this, 1000)
+            }
+        })
     }
 
     private fun refreshActiveDownloads() {
         val activeTasks = DownloadEngine.getActiveTasks()
-        if (activeTasks.isEmpty()) {
-            layoutActiveDownloads.visibility = View.GONE
-        } else {
-            layoutActiveDownloads.visibility = View.VISIBLE
-            activeAdapter.updateData(activeTasks)
-        }
+        layoutActiveDownloads.visibility = if (activeTasks.isNotEmpty()) View.VISIBLE else View.GONE
+        activeAdapter.updateData(activeTasks)
         updateActiveButtons(activeTasks)
     }
 
     private fun updateActiveButtons(activeTasks: List<DownloadTask>) {
+        if (isDeleteMode) return
         val hasRunning = activeTasks.any { it.status == DownloadStatus.RUNNING }
         val hasPaused = activeTasks.any { it.status == DownloadStatus.PAUSED }
         btnPauseAll.visibility = if (hasRunning) View.VISIBLE else View.GONE
@@ -278,40 +413,21 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
             val item = fileList[idx]
             if (item.isFile) {
                 val file = File(item.path)
-                if (file.exists() && file.delete()) deleted++
+                if (file.exists() && file.delete()) {
+                    deleted++
+                    if (item.url != null) {
+                        DownloadRecordStore.deleteByUrl(this, item.url)
+                    }
+                }
             }
         }
         Toast.makeText(this, "已删除 $deleted 个文件", Toast.LENGTH_SHORT).show()
-        selectedIndices.clear()
+        exitDeleteMode()
         loadFiles()
-    }
-
-    private fun updateButtonState() {
-        btnDelete.isEnabled = selectedIndices.isNotEmpty()
-        btnDelete.text = if (selectedIndices.isEmpty()) "删除" else "删除 (${selectedIndices.size})"
-        btnSelectAll.text = if (selectedIndices.size == fileList.size && fileList.isNotEmpty()) "取消全选" else "全选"
-    }
-
-    // DownloadListener callbacks
-    override fun onProgress(task: DownloadTask) {
-        refreshActiveDownloads()
-    }
-
-    override fun onComplete(task: DownloadTask) {
-        refreshActiveDownloads()
-        loadFiles()
-    }
-
-    override fun onFailed(task: DownloadTask, error: String) {
-        refreshActiveDownloads()
-        Toast.makeText(this, "${task.fileName} 下载失败: $error", Toast.LENGTH_SHORT).show()
-    }
-
-    override fun onCancelled(task: DownloadTask) {
-        refreshActiveDownloads()
     }
 }
 
+// --- FileItem ---
 data class FileItem(
     val name: String,
     val path: String,
@@ -321,45 +437,39 @@ data class FileItem(
     val url: String? = null
 ) {
     companion object {
-        private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-
-        fun fromFile(file: File, url: String? = null) = FileItem(
-            name = file.name,
-            path = file.absolutePath,
-            size = file.length(),
-            date = file.lastModified(),
-            isFile = true,
-            url = url
-        )
-
-        fun fromSystemDownload(dl: SystemDownload) = FileItem(
-            name = dl.title,
-            path = dl.localUri,
-            size = dl.size,
-            date = dl.date,
-            isFile = false
-        )
+        fun fromFile(file: File, url: String? = null): FileItem {
+            return FileItem(
+                name = file.name,
+                path = file.absolutePath,
+                size = file.length(),
+                date = file.lastModified(),
+                isFile = file.isFile,
+                url = url
+            )
+        }
 
         fun formatInfo(item: FileItem): String {
             val sizeStr = DownloadHelper.formatFileSize(item.size)
-            val dateStr = dateFormat.format(Date(item.date))
+            val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+                .format(java.util.Date(item.date))
             return "$sizeStr  $dateStr"
         }
 
-        private val VIDEO_EXTENSIONS = setOf("mp4", "ts", "mkv", "flv", "avi", "wmv", "mov", "webm", "3gp")
-
         fun isVideoFile(name: String): Boolean {
             val ext = name.substringAfterLast('.', "").lowercase()
-            return ext in VIDEO_EXTENSIONS
+            return ext in listOf("mp4", "ts", "mkv", "flv", "avi", "wmv", "mov", "webm", "3gp")
         }
     }
 }
 
+// --- DownloadFileAdapter ---
 class DownloadFileAdapter(
     private val items: List<FileItem>,
     private val selectedIndices: MutableSet<Int>,
+    var isDeleteMode: Boolean,
     private val onSelectionChanged: () -> Unit,
-    private val onCopy: (FileItem) -> Unit
+    private val onMore: (FileItem, View) -> Unit,
+    private val onItemClick: (FileItem) -> Unit
 ) : RecyclerView.Adapter<DownloadFileAdapter.ViewHolder>() {
 
     private val thumbCache = LruCache<String, Bitmap>(30)
@@ -369,12 +479,11 @@ class DownloadFileAdapter(
         val ivThumb: ImageView = view.findViewById(R.id.ivThumb)
         val tvName: TextView = view.findViewById(R.id.tvName)
         val tvInfo: TextView = view.findViewById(R.id.tvInfo)
-        val btnCopy: ImageButton = view.findViewById(R.id.btnCopy)
+        val btnMore: ImageButton = view.findViewById(R.id.btnMore)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_download_file, parent, false)
+        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_download_file, parent, false)
         return ViewHolder(view)
     }
 
@@ -383,54 +492,66 @@ class DownloadFileAdapter(
         holder.tvName.text = item.name
         holder.tvInfo.text = FileItem.formatInfo(item)
 
-        holder.checkBox.setOnCheckedChangeListener(null)
+        // Checkbox visibility in delete mode
+        holder.checkBox.visibility = if (isDeleteMode) View.VISIBLE else View.GONE
         holder.checkBox.isChecked = selectedIndices.contains(position)
 
-        holder.checkBox.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) selectedIndices.add(position) else selectedIndices.remove(position)
+        holder.checkBox.setOnClickListener {
+            if (selectedIndices.contains(position)) {
+                selectedIndices.remove(position)
+            } else {
+                selectedIndices.add(position)
+            }
             onSelectionChanged()
         }
 
-        holder.btnCopy.setOnClickListener { onCopy(item) }
-        holder.itemView.setOnClickListener {
-            holder.checkBox.isChecked = !holder.checkBox.isChecked
-        }
-
-        // Thumbnail for video files
-        if (item.isFile && FileItem.isVideoFile(item.name)) {
-            val cached = thumbCache.get(item.path)
-            if (cached != null) {
-                holder.ivThumb.setImageBitmap(cached)
-                holder.ivThumb.visibility = View.VISIBLE
-            } else {
-                holder.ivThumb.setImageResource(android.R.color.darker_gray)
-                holder.ivThumb.visibility = View.VISIBLE
-                loadThumbnail(item.path, holder.ivThumb)
-            }
+        // Thumbnail
+        if (FileItem.isVideoFile(item.name) && item.isFile) {
+            holder.ivThumb.visibility = View.VISIBLE
+            loadThumbnail(holder, item)
         } else {
             holder.ivThumb.visibility = View.GONE
+        }
+
+        // Click behavior
+        holder.itemView.setOnClickListener {
+            if (isDeleteMode) {
+                holder.checkBox.isChecked = !holder.checkBox.isChecked
+                if (selectedIndices.contains(position)) {
+                    selectedIndices.remove(position)
+                } else {
+                    selectedIndices.add(position)
+                }
+                onSelectionChanged()
+            } else {
+                onItemClick(item)
+            }
+        }
+
+        // More button
+        holder.btnMore.setOnClickListener { anchor ->
+            onMore(item, anchor)
         }
     }
 
     override fun getItemCount() = items.size
 
-    private fun loadThumbnail(path: String, imageView: ImageView) {
-        imageView.tag = path
+    private fun loadThumbnail(holder: ViewHolder, item: FileItem) {
+        val cached = thumbCache.get(item.path)
+        if (cached != null) {
+            holder.ivThumb.setImageBitmap(cached)
+            return
+        }
+
         Thread {
             try {
                 val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(path)
-                val frame = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                retriever.setDataSource(item.path)
+                val bitmap = retriever.getFrameAtTime(1_000_000)
                 retriever.release()
-                if (frame != null) {
-                    val scaled = Bitmap.createScaledBitmap(frame, 96, 96, true)
-                    if (scaled !== frame) frame.recycle()
-                    thumbCache.put(path, scaled)
-                    imageView.post {
-                        if (imageView.tag == path) {
-                            imageView.setImageBitmap(scaled)
-                        }
-                    }
+                if (bitmap != null) {
+                    thumbCache.put(item.path, bitmap)
+                    holder.itemView.post { holder.ivThumb.setImageBitmap(bitmap) }
                 }
             } catch (_: Exception) {}
         }.start()

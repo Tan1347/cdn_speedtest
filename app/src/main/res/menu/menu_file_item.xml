@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_rename"
+        android:title="重命名" />
+    <item
+        android:id="@+id/action_copy_link"
+        android:title="复制下载链接" />
+    <item
+        android:id="@+id/action_share"
+        android:title="分享文件" />
+    <item
+        android:id="@+id/action_delete_single"
+        android:title="删除" />
+</menu>

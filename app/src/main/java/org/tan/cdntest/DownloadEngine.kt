@@ -43,7 +43,6 @@ interface DownloadListener {
 
 object DownloadEngine {
 
-    private const val CONCURRENCY = 3
     private const val BUFFER_SIZE = 8192
     private const val CONNECT_TIMEOUT = 15000
     private const val READ_TIMEOUT = 30000
@@ -301,8 +300,13 @@ object DownloadEngine {
         return task.status == DownloadStatus.RUNNING || task.status == DownloadStatus.PENDING
     }
 
+    private fun getMaxConcurrency(): Int {
+        val ctx = appContext ?: return 3
+        return DownloadHelper.getMaxConcurrentDownloads(ctx)
+    }
+
     private fun startDownload(context: Context, task: DownloadTask) {
-        if (runningCount.get() >= CONCURRENCY) {
+        if (runningCount.get() >= getMaxConcurrency()) {
             synchronized(pendingQueue) {
                 pendingQueue.add(task.url)
             }
@@ -458,8 +462,8 @@ object DownloadEngine {
     private fun processQueue(@Suppress("UNUSED_PARAMETER") downloadDir: String) {
         val ctx = appContext ?: return
         synchronized(pendingQueue) {
-            while (pendingQueue.isNotEmpty() && runningCount.get() < CONCURRENCY) {
-                val nextUrl = pendingQueue.removeFirst()
+            while (pendingQueue.isNotEmpty() && runningCount.get() < getMaxConcurrency()) {
+                val nextUrl = pendingQueue.removeAt(0)
                 val task = tasks[nextUrl]
                 if (task != null && task.status == DownloadStatus.PENDING) {
                     startDownload(ctx, task)

@@ -106,6 +106,26 @@ object DownloadHelper {
         }
     }
 
+    fun getPlayerKernel(context: Context): String {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("player_kernel", "exo") ?: "exo"
+    }
+
+    fun setPlayerKernel(context: Context, kernel: String) {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("player_kernel", kernel).apply()
+    }
+
+    fun getMaxConcurrentDownloads(context: Context): Int {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        return prefs.getInt("max_concurrent_downloads", 3).coerceIn(1, 3)
+    }
+
+    fun setMaxConcurrentDownloads(context: Context, count: Int) {
+        val prefs = context.getSharedPreferences("download_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putInt("max_concurrent_downloads", count.coerceIn(1, 3)).apply()
+    }
+
     fun installApk(context: Context, file: File) {
         if (!file.exists()) {
             Toast.makeText(context, "安装包文件不存在", Toast.LENGTH_SHORT).show()

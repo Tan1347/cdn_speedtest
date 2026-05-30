@@ -37,7 +37,7 @@ object CertHelper {
             when (val result = method.invoke(cert)) {
                 is X509Certificate -> result
                 is android.os.Bundle -> {
-                    val encoded = result.get("x509-certificate") as? ByteArray ?: return null
+                    val encoded = result.getByteArray("x509-certificate") ?: return null
                     CertificateFactory.getInstance("X.509")
                         .generateCertificate(ByteArrayInputStream(encoded)) as? X509Certificate
                 }
