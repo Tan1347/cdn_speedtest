@@ -23,6 +23,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
@@ -95,6 +96,18 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
         setupButtons()
         setupActiveDownloads()
         loadFiles()
+
+        // Back press handling
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (isDeleteMode) {
+                    exitDeleteMode()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
     }
 
     override fun onResume() {
@@ -111,14 +124,6 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
     override fun onDestroy() {
         super.onDestroy()
         DownloadEngine.removeListener(this)
-    }
-
-    override fun onBackPressed() {
-        if (isDeleteMode) {
-            exitDeleteMode()
-        } else {
-            super.onBackPressed()
-        }
     }
 
     // --- DownloadListener ---

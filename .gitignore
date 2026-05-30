@@ -1,16 +1,16 @@
 # Built outputs
 *.iml
-.gradle
-/build
-/app/build
-/app/release
+.gradle/
+**/build/
+/app/release/
 /local.properties
 
 # IDE
-/.idea
+.idea/
 .vscode/
 .claude/
-.DS_Store
+*.hprof
+build_log/
 
 # Signing (privacy sensitive)
 *.jks
@@ -37,6 +37,7 @@ signing.properties
 Thumbs.db
 .DS_Store
 desktop.ini
+*.log
 
 # Example
 example/
