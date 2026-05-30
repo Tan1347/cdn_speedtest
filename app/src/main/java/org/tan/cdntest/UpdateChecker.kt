@@ -85,7 +85,7 @@ class UpdateChecker(private val activity: Activity) {
                             val currentVersion = getCurrentVersion()
                             // tagName 格式: v1.0.2-abc1234，提取版本号部分比较
                             val remoteVersion = extractVersion(release.tagName)
-                            if (remoteVersion != currentVersion) {
+                            if (isNewerVersion(remoteVersion, currentVersion)) {
                                 // 为下载链接生成镜像代理版本
                                 val optimized = optimizeDownloadUrl(release)
                                 AppLogger.i(activity, "UpdateChecker", "发现新版本: ${release.tagName} (当前: $currentVersion)")
@@ -109,7 +109,7 @@ class UpdateChecker(private val activity: Activity) {
             if (release != null) {
                 val currentVersion = getCurrentVersion()
                 val remoteVersion = extractVersion(release.tagName)
-                if (remoteVersion != currentVersion) {
+                if (isNewerVersion(remoteVersion, currentVersion)) {
                     val optimized = optimizeDownloadUrl(release)
                     AppLogger.i(activity, "UpdateChecker", "远程 hosts 直连成功: ${release.tagName}")
                     mainHandler.post { onResult(optimized) }
@@ -162,6 +162,25 @@ class UpdateChecker(private val activity: Activity) {
         // 去掉 - 后面的 commit hash 部分（如 -abc1234）
         val dashIndex = noV.indexOf('-')
         return if (dashIndex > 0) noV.substring(0, dashIndex) else noV
+    }
+
+    /**
+     * 语义化版本比较: remote > current 返回 true
+     * 1.1.0 > 1.0.5 → true
+     * 1.0.5 > 1.1.0 → false
+     * 1.0.5 > 1.0.5 → false
+     */
+    private fun isNewerVersion(remote: String, current: String): Boolean {
+        val rParts = remote.split(".").mapNotNull { it.toIntOrNull() }
+        val cParts = current.split(".").mapNotNull { it.toIntOrNull() }
+        val maxLen = maxOf(rParts.size, cParts.size)
+        for (i in 0 until maxLen) {
+            val r = rParts.getOrElse(i) { 0 }
+            val c = cParts.getOrElse(i) { 0 }
+            if (r > c) return true
+            if (r < c) return false
+        }
+        return false
     }
 
     /**

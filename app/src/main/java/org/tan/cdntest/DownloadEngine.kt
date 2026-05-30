@@ -132,8 +132,9 @@ object DownloadEngine {
                 // Phase 1: Parse M3U8
                 Log.i("CDNTest", "[M3U8] Phase 1: 解析 M3U8 URL: $m3u8Url")
                 val m3u8Info = M3u8Parser.fetchAndParse(m3u8Url)
+                val segCount = m3u8Info?.segments?.size ?: 0
                 if (m3u8Info == null || m3u8Info.segments.isEmpty()) {
-                    Log.e("CDNTest", "[M3U8] 解析失败: m3u8Info=${m3u8Info != null}, segments=${m3u8Info?.segments?.size ?: 0}")
+                    Log.e("CDNTest", "[M3U8] 解析失败: m3u8Info=${m3u8Info != null}, segments=$segCount")
                     task.status = DownloadStatus.FAILED
                     withContext(Dispatchers.Main) {
                         listeners.forEach { it.onFailed(task, "M3U8 解析失败") }
@@ -290,8 +291,6 @@ object DownloadEngine {
             it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.PENDING || it.status == DownloadStatus.PAUSED
         }.sortedByDescending { it.date }
     }
-
-    fun getTask(url: String): DownloadTask? = tasks[url]
 
     fun getAllTasks(): List<DownloadTask> = tasks.values.toList().sortedByDescending { it.date }
 

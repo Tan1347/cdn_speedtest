@@ -10,4 +10,8 @@
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
     <color name="divider">#E0E0E0</color>
+    <color name="hint_color">#999999</color>
+    <color name="sniffer_batch_bg">#FFF3E0</color>
+    <color name="thumbnail_bg">#1A000000</color>
+    <color name="url_text_color">#212121</color>
 </resources>

@@ -23,7 +23,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@color/white"
+        android:background="@color/background"
         android:paddingHorizontal="12dp"
         android:paddingVertical="6dp">
 
@@ -102,7 +102,7 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:padding="12dp"
-        android:background="@color/white"
+        android:background="@color/background"
         android:elevation="4dp">
 
         <com.google.android.material.button.MaterialButton
