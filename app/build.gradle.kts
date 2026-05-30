@@ -24,6 +24,8 @@ android {
         versionCode = 2
         versionName = "1.1.0"
 
+        resourceConfigurations += listOf("zh", "en")
+
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -68,6 +70,24 @@ android {
     buildFeatures {
         viewBinding = false
         compose = true
+    }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/**",
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "**/kotlin.kotlin_builtins",
+                "kotlin-tooling-metadata.json"
+            )
+        }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
 

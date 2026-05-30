@@ -78,8 +78,8 @@ jobs:
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
         uses: actions/cache@v4
         with:
-          path: /usr/local/lib/android/sdk/build-tools/33.0.1
-          key: android-build-tools-33.0.1
+          path: /usr/local/lib/android/sdk/build-tools/36.0.0
+          key: android-build-tools-36.0.0
 
       - name: Setup Gradle
         if: steps.check.outputs.need_build == 'true' && steps.tag.outputs.tag_exists == 'false'
