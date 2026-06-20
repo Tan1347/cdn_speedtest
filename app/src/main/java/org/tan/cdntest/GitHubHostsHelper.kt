@@ -208,9 +208,9 @@ object GitHubHostsHelper {
 
             val file = getHostsFile(context)
             file.writeText(root.toString(2))
-            AppLogger.i(this, "GitHubHosts", "配置已保存到文件: ${file.absolutePath}")
+            AppLogger.i(context, "GitHubHosts", "配置已保存到文件: ${file.absolutePath}")
         } catch (e: Exception) {
-            AppLogger.w(this, "GitHubHosts", "保存配置文件失败: ${e.message}")
+            AppLogger.w(context, "GitHubHosts", "保存配置文件失败: ${e.message}")
         }
     }
 
@@ -228,7 +228,7 @@ object GitHubHostsHelper {
 
             // 检查文件是否过期
             if (System.currentTimeMillis() - timestamp > CACHE_DURATION_MS) {
-                AppLogger.d(this, "GitHubHosts", "配置文件已过期")
+                AppLogger.d(context, "GitHubHosts", "配置文件已过期")
                 return null
             }
 
@@ -255,10 +255,10 @@ object GitHubHostsHelper {
                 results.add(DomainResult(domain, bestIp, bestLatency, allResults))
             }
 
-            AppLogger.i(this, "GitHubHosts", "从文件加载配置: ${results.size} 个域名")
+            AppLogger.i(context, "GitHubHosts", "从文件加载配置: ${results.size} 个域名")
             results
         } catch (e: Exception) {
-            AppLogger.w(this, "GitHubHosts", "加载配置文件失败: ${e.message}")
+            AppLogger.w(context, "GitHubHosts", "加载配置文件失败: ${e.message}")
             null
         }
     }

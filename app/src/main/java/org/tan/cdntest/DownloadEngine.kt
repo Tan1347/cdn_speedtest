@@ -77,10 +77,15 @@ object DownloadEngine {
 
     fun enqueue(context: Context, url: String, fileName: String, destPath: String, mimeType: String? = null): DownloadTask {
         if (appContext == null) appContext = context.applicationContext
+
+        // destPath 可能是目录路径，补全为完整文件路径
+        val fullDestPath = if (destPath.endsWith(fileName)) destPath
+            else File(destPath, fileName).absolutePath
+
         val task = DownloadTask(
             url = url,
             fileName = fileName,
-            destPath = destPath,
+            destPath = fullDestPath,
             mimeType = mimeType
         )
         tasks[url] = task
@@ -90,7 +95,7 @@ object DownloadEngine {
             DownloadRecordStore.add(context, DownloadRecord(
                 name = fileName,
                 url = url,
-                path = destPath,
+                path = fullDestPath,
                 size = 0,
                 date = task.date
             ))

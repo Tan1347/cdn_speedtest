@@ -201,7 +201,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle("下载文件")
             .setMessage(fileName)
             .setPositiveButton("下载") { _, _ ->
-                SimpleDownloader(this).download(url, fileName)
+                val destPath = DownloadHelper.getDownloadDir(this).absolutePath
+                DownloadEngine.enqueue(this, url, fileName, destPath, mimeType)
+                Toast.makeText(this, "已添加到下载管理", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("取消", null)
             .show()

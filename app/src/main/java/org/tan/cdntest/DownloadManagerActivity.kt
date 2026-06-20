@@ -227,6 +227,7 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
         popup.menuInflater.inflate(R.menu.menu_file_item, popup.menu)
         popup.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
+                R.id.action_open -> { openFile(item); true }
                 R.id.action_rename -> { renameFile(item); true }
                 R.id.action_copy_link -> { copyLink(item); true }
                 R.id.action_delete_single -> { deleteSingleFile(item); true }
@@ -238,12 +239,31 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
     }
 
     private fun openFile(item: FileItem) {
-        if (item.isFile && FileItem.isVideoFile(item.name)) {
-            val file = File(item.path)
-            if (file.exists()) {
-                val uri = Uri.fromFile(file)
-                PreviewPlayerActivity.start(this, uri.toString(), "video", item.name)
+        if (!item.isFile) return
+        val file = File(item.path)
+        if (!file.exists()) {
+            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 视频文件优先使用内置播放器
+        if (FileItem.isVideoFile(item.name)) {
+            val uri = Uri.fromFile(file)
+            PreviewPlayerActivity.start(this, uri.toString(), "video", item.name)
+            return
+        }
+
+        // 其他文件使用系统默认应用打开
+        try {
+            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val mimeType = getMimeType(item.name)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "无法打开此文件: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -350,9 +370,6 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
 
     // --- Data ---
     private fun loadFiles() {
-        fileList.clear()
-        selectedIndices.clear()
-
         lifecycleScope.launch {
             val records = withContext(Dispatchers.IO) {
                 DownloadRecordStore.getAll(this@DownloadManagerActivity)
@@ -362,12 +379,20 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
             val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
 
             tvCurrentDir.text = "目录: ${dir.absolutePath}"
+
+            // 用局部列表构建，完成后一次性替换，避免多次调用导致数据叠加
+            val newList = mutableListOf<FileItem>()
             files.forEach { file ->
-                val record = records.find { it.path == file.absolutePath || it.name == file.name }
-                fileList.add(FileItem.fromFile(file, record?.url))
+                val record = records.find { it.path == file.absolutePath }
+                    ?: records.find { it.name == file.name && it.path.endsWith("/${it.name}") }
+                newList.add(FileItem.fromFile(file, record?.url))
             }
 
+            fileList.clear()
+            selectedIndices.clear()
+            fileList.addAll(newList)
             adapter.notifyDataSetChanged()
+
             tvEmpty.visibility = if (fileList.isEmpty()) View.VISIBLE else View.GONE
             rvFiles.visibility = if (fileList.isEmpty()) View.GONE else View.VISIBLE
             updateButtonState()
