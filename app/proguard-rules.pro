@@ -32,3 +32,10 @@
 
 # Remove kotlinx.serialization metadata
 -dontwarn kotlinx.serialization.**
+
+# OkHttp
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-keep class okio.** { *; }

@@ -17,14 +17,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import org.json.JSONObject
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.Request
 import java.util.concurrent.Executors
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.X509TrustManager
-import java.security.cert.X509Certificate
 
 data class ReleaseInfo(
     val tagName: String,
@@ -61,6 +55,8 @@ class UpdateChecker(private val activity: Activity) {
         executor.execute {
             AppLogger.i(activity, "UpdateChecker", "检查更新...")
 
+            val client = AppHttpClient.get(activity)
+
             // 使用优选排序后的镜像列表
             val apiMirrors = GitHubHostsHelper.getSortedApiMirrors(activity)
             AppLogger.d(activity, "UpdateChecker", "镜像排序: $apiMirrors")
@@ -70,23 +66,21 @@ class UpdateChecker(private val activity: Activity) {
                     val apiUrl = "${mirror}${GITHUB_API}"
                     AppLogger.d(activity, "UpdateChecker", "尝试 API 源 $index: $apiUrl")
 
-                    val url = URL(apiUrl)
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    conn.setRequestProperty("User-Agent", "CDNViewer-Android")
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 8000
+                    val request = Request.Builder()
+                        .url(apiUrl)
+                        .header("Accept", "application/vnd.github.v3+json")
+                        .header("User-Agent", "CDNViewer-Android")
+                        .build()
 
-                    if (conn.responseCode == 200) {
-                        val json = conn.inputStream.bufferedReader().readText()
-                        conn.disconnect()
+                    val response = client.newCall(request).execute()
+                    if (response.isSuccessful) {
+                        val json = response.body?.string() ?: ""
+                        response.close()
                         val release = parseReleaseJson(json)
                         if (release != null) {
                             val currentVersion = getCurrentVersion()
-                            // tagName 格式: v1.0.2-abc1234，提取版本号部分比较
                             val remoteVersion = extractVersion(release.tagName)
                             if (isNewerVersion(remoteVersion, currentVersion)) {
-                                // 为下载链接生成镜像代理版本
                                 val optimized = optimizeDownloadUrl(release)
                                 AppLogger.i(activity, "UpdateChecker", "发现新版本: ${release.tagName} (当前: $currentVersion)")
                                 mainHandler.post { onResult(optimized) }
@@ -97,21 +91,21 @@ class UpdateChecker(private val activity: Activity) {
                             return@execute
                         }
                     }
-                    conn.disconnect()
+                    response.close()
                 } catch (e: Exception) {
                     AppLogger.w(activity, "UpdateChecker", "API 源 $index 失败: ${e.message}")
                 }
             }
 
-            // 所有镜像失败，尝试从远程 hosts 获取 GitHub IP 直连
-            AppLogger.w(activity, "UpdateChecker", "镜像全部失败，尝试从远程 hosts 获取 IP 直连...")
-            val release = tryDirectWithRemoteHosts()
+            // 所有镜像失败，尝试直连 GitHub（OkHttp 客户端已配置优选 DNS，自动使用优选 IP）
+            AppLogger.w(activity, "UpdateChecker", "镜像全部失败，尝试优选 DNS 直连 GitHub...")
+            val release = tryDirectWithOptimizedDns(client)
             if (release != null) {
                 val currentVersion = getCurrentVersion()
                 val remoteVersion = extractVersion(release.tagName)
                 if (isNewerVersion(remoteVersion, currentVersion)) {
                     val optimized = optimizeDownloadUrl(release)
-                    AppLogger.i(activity, "UpdateChecker", "远程 hosts 直连成功: ${release.tagName}")
+                    AppLogger.i(activity, "UpdateChecker", "优选 DNS 直连成功: ${release.tagName}")
                     mainHandler.post { onResult(optimized) }
                     return@execute
                 } else {
@@ -200,96 +194,34 @@ class UpdateChecker(private val activity: Activity) {
     }
 
     /**
-     * 所有镜像失败时，从远程 hosts 获取 GitHub IP，通过 SSLSocket 直连 API
+     * 所有镜像失败时，通过 OkHttp 优选 DNS 直连 GitHub API。
+     * GitHubDns 会自动使用优选 IP 解析 GitHub 域名，无需手动指定 IP。
      */
-    private fun tryDirectWithRemoteHosts(): ReleaseInfo? {
+    private fun tryDirectWithOptimizedDns(client: okhttp3.OkHttpClient): ReleaseInfo? {
         return try {
-            // 1. 获取远程 hosts
-            val remoteHosts = GitHubHostsHelper.fetchRemoteHosts(activity)
-            if (remoteHosts.isEmpty()) {
-                AppLogger.w(activity, "UpdateChecker", "远程 hosts 获取失败或为空")
-                return null
+            // 确保远程 hosts 已缓存（供 GitHubDns 使用）
+            GitHubHostsHelper.fetchRemoteHosts(activity)
+
+            val request = Request.Builder()
+                .url(GITHUB_API)
+                .header("Accept", "application/vnd.github.v3+json")
+                .header("User-Agent", "CDNViewer-Android")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val json = response.body?.string() ?: ""
+                response.close()
+                AppLogger.i(activity, "UpdateChecker", "优选 DNS 直连成功")
+                parseReleaseJson(json)
+            } else {
+                response.close()
+                AppLogger.w(activity, "UpdateChecker", "优选 DNS 直连返回: ${response.code}")
+                null
             }
-            AppLogger.i(activity, "UpdateChecker", "远程 hosts 获取成功，${remoteHosts.size} 条记录")
-
-            // 2. 找到 api.github.com 或 github.com 的 IP
-            val apiIp = remoteHosts["api.github.com"]
-                ?: remoteHosts["github.com"]
-                ?: return null
-
-            // 3. 测试 IP 延迟
-            val latency = GitHubHostsHelper.testIp(apiIp)
-            if (latency == Long.MAX_VALUE) {
-                AppLogger.w(activity, "UpdateChecker", "远程 hosts IP 不可达: $apiIp")
-                return null
-            }
-            AppLogger.i(activity, "UpdateChecker", "远程 hosts IP: $apiIp, 延迟: ${latency}ms")
-
-            // 4. 通过 SSLSocket 直连
-            val apiPath = "/repos/$REPO/releases/latest"
-            val response = httpsGetWithIp(apiIp, "api.github.com", apiPath)
-            if (response != null) {
-                parseReleaseJson(response)
-            } else null
         } catch (e: Exception) {
-            AppLogger.w(activity, "UpdateChecker", "远程 hosts 直连失败: ${e.message}")
+            AppLogger.w(activity, "UpdateChecker", "优选 DNS 直连失败: ${e.message}")
             null
-        }
-    }
-
-    /**
-     * 通过 SSLSocket 使用指定 IP 发起 HTTPS GET 请求
-     */
-    private fun httpsGetWithIp(ip: String, host: String, path: String): String? {
-        var socket: SSLSocket? = null
-        try {
-            val trustAll = arrayOf<X509TrustManager>(object : X509TrustManager {
-                override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-                override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-                override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-            })
-
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, trustAll, java.security.SecureRandom())
-            val factory = sslContext.socketFactory
-
-            socket = factory.createSocket(ip, 443) as SSLSocket
-            socket.soTimeout = 8000
-            socket.startHandshake()
-
-            val request = buildString {
-                append("GET $path HTTP/1.1\r\n")
-                append("Host: $host\r\n")
-                append("Accept: application/vnd.github.v3+json\r\n")
-                append("User-Agent: CDNViewer-Android\r\n")
-                append("Connection: close\r\n")
-                append("\r\n")
-            }
-
-            socket.outputStream.write(request.toByteArray())
-            socket.outputStream.flush()
-
-            val reader = socket.inputStream.bufferedReader()
-            val statusLine = reader.readLine() ?: return null
-            if (!statusLine.contains("200")) return null
-
-            // 跳过 headers
-            var line: String?
-            while (reader.readLine().also { line = it } != null) {
-                if (line.isNullOrEmpty()) break
-            }
-
-            // 读取 body
-            val body = StringBuilder()
-            while (reader.readLine().also { line = it } != null) {
-                body.append(line)
-            }
-            return body.toString().ifEmpty { null }
-        } catch (e: Exception) {
-            AppLogger.w(activity, "UpdateChecker", "SSLSocket 请求失败: ${e.message}")
-            return null
-        } finally {
-            try { socket?.close() } catch (_: Exception) {}
         }
     }
 

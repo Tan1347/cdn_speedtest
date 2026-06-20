@@ -1,11 +1,12 @@
 package org.tan.cdntest
 
 import android.content.Context
+import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
+import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.net.URL
 
 object GitHubHostsHelper {
 
@@ -130,10 +131,27 @@ object GitHubHostsHelper {
         return results
     }
 
+    // --- JSON 文件持久化 ---
+
+    private const val CONFIG_DIR = "config"
+    private const val HOSTS_FILE = "github_hosts.json"
+
     /**
-     * 保存测试结果到 SharedPreferences
+     * 获取 hosts 配置文件路径
+     */
+    private fun getHostsFile(context: Context): File {
+        val dir = File(context.getExternalFilesDir(null), CONFIG_DIR)
+        if (!dir.exists()) dir.mkdirs()
+        return File(dir, HOSTS_FILE)
+    }
+
+    /**
+     * 保存测试结果到 SharedPreferences + JSON 文件
      */
     fun saveResults(context: Context, results: List<DomainResult>) {
+        val timestamp = System.currentTimeMillis()
+
+        // 1. 保存到 SharedPreferences（内存缓存）
         val cache = JSONObject()
         for (result in results) {
             cache.put(result.domain, result.bestIp)
@@ -141,19 +159,120 @@ object GitHubHostsHelper {
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_CACHE, cache.toString())
-            .putLong(KEY_TIMESTAMP, System.currentTimeMillis())
+            .putLong(KEY_TIMESTAMP, timestamp)
             .apply()
+
+        // 2. 保存到 JSON 文件（持久化）
+        saveResultsToFile(context, results, timestamp)
     }
 
     /**
-     * 获取缓存的最佳 IP，优先使用本地测速结果，其次使用远程 hosts 数据
+     * 将测试结果写入 JSON 文件
+     * 格式:
+     * {
+     *   "timestamp": 1234567890,
+     *   "domains": {
+     *     "github.com": {
+     *       "bestIp": "20.205.243.166",
+     *       "bestLatency": 150,
+     *       "allResults": [
+     *         {"ip": "20.205.243.166", "latency": 150},
+     *         {"ip": "140.82.121.3", "latency": 200}
+     *       ]
+     *     }
+     *   }
+     * }
+     */
+    private fun saveResultsToFile(context: Context, results: List<DomainResult>, timestamp: Long) {
+        try {
+            val root = JSONObject()
+            root.put("timestamp", timestamp)
+
+            val domains = JSONObject()
+            for (result in results) {
+                val domainObj = JSONObject()
+                domainObj.put("bestIp", result.bestIp)
+                domainObj.put("bestLatency", result.bestLatency)
+
+                val allArray = JSONArray()
+                for (ipResult in result.allResults) {
+                    val ipObj = JSONObject()
+                    ipObj.put("ip", ipResult.ip)
+                    ipObj.put("latency", ipResult.latency)
+                    allArray.put(ipObj)
+                }
+                domainObj.put("allResults", allArray)
+                domains.put(result.domain, domainObj)
+            }
+            root.put("domains", domains)
+
+            val file = getHostsFile(context)
+            file.writeText(root.toString(2))
+            AppLogger.i(this, "GitHubHosts", "配置已保存到文件: ${file.absolutePath}")
+        } catch (e: Exception) {
+            AppLogger.w(this, "GitHubHosts", "保存配置文件失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 从 JSON 文件加载测试结果
+     * @return DomainResult 列表，文件不存在或无效时返回 null
+     */
+    fun loadResultsFromFile(context: Context): List<DomainResult>? {
+        val file = getHostsFile(context)
+        if (!file.exists()) return null
+
+        return try {
+            val root = JSONObject(file.readText())
+            val timestamp = root.optLong("timestamp", 0)
+
+            // 检查文件是否过期
+            if (System.currentTimeMillis() - timestamp > CACHE_DURATION_MS) {
+                AppLogger.d(this, "GitHubHosts", "配置文件已过期")
+                return null
+            }
+
+            val domains = root.optJSONObject("domains") ?: return null
+            val results = mutableListOf<DomainResult>()
+
+            for (domain in domains.keys()) {
+                val domainObj = domains.getJSONObject(domain)
+                val bestIp = domainObj.getString("bestIp")
+                val bestLatency = domainObj.optLong("bestLatency", Long.MAX_VALUE)
+
+                val allResults = mutableListOf<IpResult>()
+                val allArray = domainObj.optJSONArray("allResults")
+                if (allArray != null) {
+                    for (i in 0 until allArray.length()) {
+                        val ipObj = allArray.getJSONObject(i)
+                        allResults.add(IpResult(
+                            ip = ipObj.getString("ip"),
+                            latency = ipObj.optLong("latency", Long.MAX_VALUE)
+                        ))
+                    }
+                }
+
+                results.add(DomainResult(domain, bestIp, bestLatency, allResults))
+            }
+
+            AppLogger.i(this, "GitHubHosts", "从文件加载配置: ${results.size} 个域名")
+            results
+        } catch (e: Exception) {
+            AppLogger.w(this, "GitHubHosts", "加载配置文件失败: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * 获取缓存的最佳 IP，优先级：SharedPreferences → JSON 文件 → 远程 hosts 缓存
      */
     fun getBestIp(context: Context, domain: String): String? {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
 
-        // 1. 优先使用本地测速缓存
+        // 1. SharedPreferences 本地测速缓存
         val localTimestamp = prefs.getLong(KEY_TIMESTAMP, 0)
-        if (System.currentTimeMillis() - localTimestamp <= CACHE_DURATION_MS) {
+        if (now - localTimestamp <= CACHE_DURATION_MS) {
             val localJson = prefs.getString(KEY_CACHE, null)
             if (localJson != null) {
                 try {
@@ -164,9 +283,16 @@ object GitHubHostsHelper {
             }
         }
 
-        // 2. 回退到远程 hosts 缓存
+        // 2. JSON 文件缓存（SharedPreferences 可能被系统清理，文件更持久）
+        val fileResult = loadResultsFromFile(context)
+        if (fileResult != null) {
+            val found = fileResult.find { it.domain == domain }
+            if (found != null) return found.bestIp
+        }
+
+        // 3. 远程 hosts 缓存
         val remoteTimestamp = prefs.getLong(KEY_REMOTE_TIMESTAMP, 0)
-        if (System.currentTimeMillis() - remoteTimestamp <= CACHE_DURATION_MS) {
+        if (now - remoteTimestamp <= CACHE_DURATION_MS) {
             val remoteJson = prefs.getString(KEY_REMOTE_CACHE, null)
             if (remoteJson != null) {
                 try {
@@ -181,30 +307,39 @@ object GitHubHostsHelper {
     }
 
     /**
-     * 获取上次测试时间戳
+     * 获取上次测试时间戳（SharedPreferences 优先，回退到 JSON 文件）
      */
     fun getLastTestTime(context: Context): Long {
-        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val prefsTime = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .getLong(KEY_TIMESTAMP, 0)
+        if (prefsTime > 0) return prefsTime
+
+        // 回退到 JSON 文件中的 timestamp
+        val file = getHostsFile(context)
+        if (!file.exists()) return 0
+        return try {
+            JSONObject(file.readText()).optLong("timestamp", 0)
+        } catch (_: Exception) { 0 }
     }
 
     /**
-     * 缓存是否有效
+     * 缓存是否有效（SharedPreferences 或 JSON 文件任一有效即可）
      */
     fun isCacheValid(context: Context): Boolean {
-        val timestamp = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .getLong(KEY_TIMESTAMP, 0)
-        return System.currentTimeMillis() - timestamp <= CACHE_DURATION_MS
+        return System.currentTimeMillis() - getLastTestTime(context) <= CACHE_DURATION_MS
     }
 
     /**
-     * 清除缓存
+     * 清除缓存（SharedPreferences + JSON 文件）
      */
     fun clearCache(context: Context) {
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
             .edit()
             .clear()
             .apply()
+
+        val file = getHostsFile(context)
+        if (file.exists()) file.delete()
     }
 
     // --- 远程 Hosts 获取 ---
@@ -215,22 +350,23 @@ object GitHubHostsHelper {
      */
     fun fetchRemoteHosts(context: Context): Map<String, String> {
         return try {
-            val url = URL(REMOTE_HOSTS_URL)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", "CDNViewer-Android")
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
+            val client = AppHttpClient.get(context)
+            val request = Request.Builder()
+                .url(REMOTE_HOSTS_URL)
+                .header("User-Agent", "CDNViewer-Android")
+                .build()
 
-            if (conn.responseCode == 200) {
-                val text = conn.inputStream.bufferedReader().readText()
-                conn.disconnect()
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                val text = response.body?.string() ?: ""
+                response.close()
                 val parsed = parseHostsFile(text)
                 if (parsed.isNotEmpty()) {
                     saveRemoteHosts(context, parsed)
                 }
                 parsed
             } else {
-                conn.disconnect()
+                response.close()
                 emptyMap()
             }
         } catch (e: Exception) {

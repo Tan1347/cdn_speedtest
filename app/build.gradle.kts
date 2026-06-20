@@ -22,7 +22,7 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = 2
-        versionName = "1.1.0"
+        versionName = "1.2.0"
 
         resourceConfigurations += listOf("zh", "en")
 
@@ -112,6 +112,7 @@ dependencies {
     implementation("androidx.recyclerview:recyclerview:1.3.2")
     implementation("org.tukaani:xz:1.9")
     implementation("com.moizhassan.ffmpeg:ffmpeg-kit-16kb:6.1.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     val roomVersion = "2.6.1"
     implementation("androidx.room:room-runtime:$roomVersion")

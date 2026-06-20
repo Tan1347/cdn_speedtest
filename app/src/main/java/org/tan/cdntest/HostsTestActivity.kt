@@ -67,6 +67,7 @@ class HostsTestActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         updateCacheStatus()
+        loadCachedResults()
 
         setContent {
             CDNTestTheme {
@@ -109,7 +110,22 @@ class HostsTestActivity : ComponentActivity() {
             statusParts.add("远程 hosts: 未获取")
         }
 
+        val configFile = java.io.File(getExternalFilesDir(null), "config/github_hosts.json")
+        statusParts.add("配置文件: ${configFile.absolutePath}")
+
         cacheStatusText = statusParts.joinToString("\n")
+    }
+
+    /**
+     * 启动时从 JSON 文件加载上次的测试结果，无需重新测试即可直接使用
+     */
+    private fun loadCachedResults() {
+        val cached = GitHubHostsHelper.loadResultsFromFile(this) ?: return
+        testResults = cached
+        showResults = true
+        applyEnabled = true
+        startButtonText = "重新测试"
+        AppLogger.i(this, "HostsTest", "从文件加载缓存结果: ${cached.size} 个域名")
     }
 
     private fun startTest() {
@@ -171,9 +187,11 @@ class HostsTestActivity : ComponentActivity() {
             return
         }
         GitHubHostsHelper.saveResults(this, testResults)
+        // 重建 HTTP 客户端，使优选 IP 对后续 GitHub 请求立即生效
+        AppHttpClient.invalidate()
         updateCacheStatus()
-        Toast.makeText(this, "Hosts 优选结果已应用", Toast.LENGTH_SHORT).show()
-        AppLogger.i(this, "HostsTest", "Hosts 优选结果已保存")
+        Toast.makeText(this, "Hosts 优选结果已应用，GitHub 请求将使用优选 IP", Toast.LENGTH_SHORT).show()
+        AppLogger.i(this, "HostsTest", "Hosts 优选结果已保存，AppHttpClient 已重建")
     }
 }
 
