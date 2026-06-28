@@ -21,8 +21,8 @@ android {
         applicationId = "org.tan.cdntest"
         minSdk = 30
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.3.0"
+        versionCode = 3
+        versionName = "1.3.1-debug"
 
         resourceConfigurations += listOf("zh", "en")
 
