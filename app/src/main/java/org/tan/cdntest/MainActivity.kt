@@ -25,8 +25,13 @@ import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import java.io.File
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -197,16 +202,56 @@ class MainActivity : AppCompatActivity() {
 
     private fun showDownloadConfirm(url: String, mimeType: String) {
         val fileName = Uri.parse(url).lastPathSegment ?: "download"
+        
+        lifecycleScope.launch {
+            val existingRecord = withContext(Dispatchers.IO) {
+                DownloadRecordStore.getByName(this@MainActivity, fileName)
+            }
+            
+            if (existingRecord != null && existingRecord.url != url) {
+                showFileConflictDialog(fileName, url, mimeType, existingRecord.url)
+            } else {
+                startDownload(url, fileName, mimeType)
+            }
+        }
+    }
+    
+    private fun showFileConflictDialog(fileName: String, newUrl: String, mimeType: String, existingUrl: String) {
         AlertDialog.Builder(this)
-            .setTitle("下载文件")
-            .setMessage(fileName)
-            .setPositiveButton("下载") { _, _ ->
+            .setTitle("文件名冲突")
+            .setMessage("已存在同名文件 \"$fileName\"（来自不同链接）\n\n请选择操作：")
+            .setPositiveButton("覆盖下载") { _, _ ->
                 val destPath = DownloadHelper.getDownloadDir(this).absolutePath
-                DownloadEngine.enqueue(this, url, fileName, destPath, mimeType)
+                DownloadEngine.enqueue(this, newUrl, fileName, destPath, mimeType)
                 Toast.makeText(this, "已添加到下载管理", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("重命名下载") { _, _ ->
+                val newFileName = generateUniqueFileName(fileName)
+                startDownload(newUrl, newFileName, mimeType)
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+    
+    private fun generateUniqueFileName(originalName: String): String {
+        val dotIndex = originalName.lastIndexOf('.')
+        val name = if (dotIndex > 0) originalName.substring(0, dotIndex) else originalName
+        val extension = if (dotIndex > 0) originalName.substring(dotIndex) else ""
+        
+        var counter = 1
+        var newFileName: String
+        do {
+            newFileName = "$name ($counter)$extension"
+            counter++
+        } while (File(DownloadHelper.getDownloadDir(this), newFileName).exists())
+        
+        return newFileName
+    }
+    
+    private fun startDownload(url: String, fileName: String, mimeType: String) {
+        val destPath = DownloadHelper.getDownloadDir(this).absolutePath
+        DownloadEngine.enqueue(this, url, fileName, destPath, mimeType)
+        Toast.makeText(this, "已添加到下载管理", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupBottomNav() {

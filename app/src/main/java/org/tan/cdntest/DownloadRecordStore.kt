@@ -47,4 +47,15 @@ object DownloadRecordStore {
     fun deleteByUrl(context: Context, url: String) {
         dao(context).deleteByUrl(url)
     }
+
+    fun getByName(context: Context, name: String): DownloadRecord? {
+        val entity = dao(context).getByName(name) ?: return null
+        return DownloadRecord(
+            name = entity.name,
+            url = entity.url,
+            path = entity.path,
+            size = entity.size,
+            date = entity.date
+        )
+    }
 }

@@ -26,6 +26,9 @@ interface DownloadRecordDao {
     @Query("SELECT * FROM download_records WHERE url = :url LIMIT 1")
     fun getByUrl(url: String): DownloadRecordEntity?
 
+    @Query("SELECT * FROM download_records WHERE name = :name LIMIT 1")
+    fun getByName(name: String): DownloadRecordEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(record: DownloadRecordEntity)
 

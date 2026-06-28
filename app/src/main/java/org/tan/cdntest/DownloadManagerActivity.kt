@@ -286,16 +286,20 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
                         return@setPositiveButton
                     }
                     if (oldFile.renameTo(newFile)) {
-                        if (item.url != null) {
-                            DownloadRecordStore.deleteByUrl(this, item.url)
-                            DownloadRecordStore.add(this, DownloadRecord(
-                                name = newName, url = item.url,
-                                path = newFile.absolutePath, size = newFile.length(),
-                                date = newFile.lastModified()
-                            ))
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                if (item.url != null) {
+                                    DownloadRecordStore.deleteByUrl(this@DownloadManagerActivity, item.url)
+                                    DownloadRecordStore.add(this@DownloadManagerActivity, DownloadRecord(
+                                        name = newName, url = item.url,
+                                        path = newFile.absolutePath, size = newFile.length(),
+                                        date = newFile.lastModified()
+                                    ))
+                                }
+                            }
+                            loadFiles()
+                            Toast.makeText(this@DownloadManagerActivity, "已重命名", Toast.LENGTH_SHORT).show()
                         }
-                        loadFiles()
-                        Toast.makeText(this, "已重命名", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this, "重命名失败", Toast.LENGTH_SHORT).show()
                     }
@@ -317,14 +321,18 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
             .setTitle("确认删除")
             .setMessage("确定要删除 ${item.name} 吗？")
             .setPositiveButton("删除") { _, _ ->
-                if (item.isFile) {
-                    File(item.path).delete()
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        if (item.isFile) {
+                            File(item.path).delete()
+                        }
+                        if (item.url != null) {
+                            DownloadRecordStore.deleteByUrl(this@DownloadManagerActivity, item.url)
+                        }
+                    }
+                    loadFiles()
+                    Toast.makeText(this@DownloadManagerActivity, "已删除", Toast.LENGTH_SHORT).show()
                 }
-                if (item.url != null) {
-                    DownloadRecordStore.deleteByUrl(this, item.url)
-                }
-                loadFiles()
-                Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("取消", null)
             .show()
@@ -438,22 +446,28 @@ class DownloadManagerActivity : AppCompatActivity(), DownloadListener {
     }
 
     private fun deleteSelected() {
-        var deleted = 0
-        for (idx in selectedIndices) {
-            val item = fileList[idx]
-            if (item.isFile) {
-                val file = File(item.path)
-                if (file.exists() && file.delete()) {
-                    deleted++
-                    if (item.url != null) {
-                        DownloadRecordStore.deleteByUrl(this, item.url)
+        val indicesToDelete = selectedIndices.toList()
+        lifecycleScope.launch {
+            var deleted = 0
+            withContext(Dispatchers.IO) {
+                for (idx in indicesToDelete) {
+                    if (idx >= fileList.size) continue
+                    val item = fileList[idx]
+                    if (item.isFile) {
+                        val file = File(item.path)
+                        if (file.exists() && file.delete()) {
+                            deleted++
+                            if (item.url != null) {
+                                DownloadRecordStore.deleteByUrl(this@DownloadManagerActivity, item.url)
+                            }
+                        }
                     }
                 }
             }
+            Toast.makeText(this@DownloadManagerActivity, "已删除 $deleted 个文件", Toast.LENGTH_SHORT).show()
+            exitDeleteMode()
+            loadFiles()
         }
-        Toast.makeText(this, "已删除 $deleted 个文件", Toast.LENGTH_SHORT).show()
-        exitDeleteMode()
-        loadFiles()
     }
 }
 
