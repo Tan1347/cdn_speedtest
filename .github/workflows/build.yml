@@ -1,6 +1,9 @@
 name: Weekly Build Check
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     - cron: '0 16 * * 2'  # 每周二 UTC 16:00 = 北京时间 周三 00:00
   workflow_dispatch:
