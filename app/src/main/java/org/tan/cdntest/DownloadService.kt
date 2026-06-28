@@ -63,9 +63,9 @@ class DownloadService : Service(), DownloadListener {
     }
 
     override fun onFailed(task: DownloadTask, error: String) {
-        val notification = buildNotification("${task.fileName} 下载失败: $error", 0, 0)
+        val notification = buildFailedNotification("${task.fileName} 下载失败: $error")
         val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIFICATION_ID + 1, notification)
+        nm.notify(NOTIFICATION_ID, notification)
 
         if (DownloadEngine.getAllTasks().none { it.status == DownloadStatus.RUNNING || it.status == DownloadStatus.PENDING }) {
             stopSelf()
@@ -110,6 +110,26 @@ class DownloadService : Service(), DownloadListener {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
+            .build()
+    }
+
+    private fun buildFailedNotification(text: String): Notification {
+        val intent = Intent(this, DownloadManagerActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("下载失败")
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(pendingIntent)
+            .setOngoing(false)
+            .setAutoCancel(true)
             .build()
     }
 }

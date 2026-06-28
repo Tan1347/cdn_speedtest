@@ -14,6 +14,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
+import android.webkit.DownloadListener
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -176,6 +177,38 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // 拦截所有下载请求，防止系统下载管理器劫持
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+            val fileName = guessFileName(url, contentDisposition, mimeType)
+            showDownloadConfirm(url, mimeType)
+        }
+    }
+
+    private fun guessFileName(url: String, contentDisposition: String?, mimeType: String?): String {
+        // 优先从 Content-Disposition 提取文件名
+        if (contentDisposition != null) {
+            val match = Regex("filename[*]?=[\"']?([^\"';\\s]+)", RegexOption.IGNORE_CASE).find(contentDisposition)
+            if (match != null) {
+                return java.net.URLDecoder.decode(match.groupValues[1], "UTF-8")
+            }
+        }
+        // 从 URL 提取文件名
+        val urlFileName = Uri.parse(url).lastPathSegment
+        if (urlFileName != null && urlFileName.contains('.')) {
+            return urlFileName
+        }
+        // 根据 mimeType 生成默认文件名
+        val extension = when {
+            mimeType?.contains("pdf") == true -> ".pdf"
+            mimeType?.contains("zip") == true -> ".zip"
+            mimeType?.contains("apk") == true -> ".apk"
+            mimeType?.contains("image") == true -> ".jpg"
+            mimeType?.contains("video") == true -> ".mp4"
+            mimeType?.contains("audio") == true -> ".mp3"
+            else -> ".download"
+        }
+        return "download_${System.currentTimeMillis()}$extension"
     }
 
     private fun isDownloadUrl(url: String): Boolean {

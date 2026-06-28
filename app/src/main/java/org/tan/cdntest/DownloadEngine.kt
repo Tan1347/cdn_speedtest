@@ -87,8 +87,8 @@ object DownloadEngine {
         )
         tasks[url] = task
 
-        // Save to database
-        scope.launch {
+        // Save to database synchronously before starting download
+        try {
             DownloadRecordStore.add(context, DownloadRecord(
                 name = fileName,
                 url = url,
@@ -96,6 +96,8 @@ object DownloadEngine {
                 size = 0,
                 date = task.date
             ))
+        } catch (e: Exception) {
+            Log.w("CDNTest", "保存下载记录失败: ${e.message}")
         }
 
         startDownload(context, task)
