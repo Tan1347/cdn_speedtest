@@ -320,29 +320,45 @@ jobs:
 
           echo "Cache cleanup completed."
 
-      - name: Clean old releases (keep latest 10)
+      - name: Clean old releases (keep latest 3)
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Checking releases..."
-          OLD_RELEASES=$(gh api repos/${{ github.repository }}/releases --paginate --jq '.[10:] | .[].id')
-          if [ -n "$OLD_RELEASES" ]; then
-            COUNT=$(echo "$OLD_RELEASES" | wc -l)
-            echo "Deleting $COUNT old release(s)..."
-            echo "$OLD_RELEASES" | while read -r id; do
-              gh api --method DELETE repos/${{ github.repository }}/releases/$id || true
-            done
-            echo "Done."
-          else
-            echo "No old releases to delete."
-          fi
+          echo "🗑️ Cleaning up old releases (keeping last 3)..."
+          RELEASES=$(gh api repos/${{ github.repository }}/releases --paginate --jq 'sort_by(.created_at) | reverse | .[].tag_name')
+          COUNT=0
+          for TAG in $RELEASES; do
+            COUNT=$((COUNT + 1))
+            if [ $COUNT -gt 3 ]; then
+              echo "  Deleting release: $TAG"
+              REL_ID=$(gh api repos/${{ github.repository }}/releases/tags/$TAG --jq '.id' 2>/dev/null)
+              if [ -n "$REL_ID" ] && [ "$REL_ID" != "null" ]; then
+                gh api --method DELETE repos/${{ github.repository }}/releases/$REL_ID 2>/dev/null || true
+                git push --delete origin "$TAG" 2>/dev/null || true
+              fi
+            fi
+          done
+          echo "✅ Release cleanup done"
 
-          # 同时删除旧的 release tags
-          OLD_TAGS=$(git tag -l 'v*' --sort=-creatordate | tail -n +11)
-          if [ -n "$OLD_TAGS" ]; then
-            echo "Deleting old tags: $OLD_TAGS"
-            for TAG in $OLD_TAGS; do
-              git push --delete origin "$TAG" 2>/dev/null || true
-            done
-          fi
+      - name: Clean old workflow runs (keep latest 3)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "🗑️ Cleaning up old workflow runs (keeping last 3)..."
+          CURRENT_RUN_ID="${{ github.run_id }}"
+          RUNS=$(gh api repos/${{ github.repository }}/actions/runs --jq '.workflow_runs | sort_by(.created_at) | reverse | .[].id')
+          COUNT=0
+          for RUN_ID in $RUNS; do
+            COUNT=$((COUNT + 1))
+            if [ "$RUN_ID" = "$CURRENT_RUN_ID" ]; then
+              echo "  Skipping current run: $RUN_ID"
+              continue
+            fi
+            if [ $COUNT -gt 3 ]; then
+              echo "  Deleting run: $RUN_ID"
+              gh api --method DELETE repos/${{ github.repository }}/actions/runs/$RUN_ID 2>/dev/null || true
+            fi
+          done
+          echo "✅ Workflow run cleanup done"
