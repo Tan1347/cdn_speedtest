@@ -22,7 +22,7 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = 2
-        versionName = "1.2.1"
+        versionName = "1.3.0"
 
         resourceConfigurations += listOf("zh", "en")
 
