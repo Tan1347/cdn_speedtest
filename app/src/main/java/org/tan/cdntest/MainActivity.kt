@@ -1,6 +1,7 @@
 package org.tan.cdntest
 
 import android.Manifest
+import android.util.Log
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -125,6 +126,7 @@ class MainActivity : AppCompatActivity() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url.toString()
                 val scheme = request.url.scheme
+                Log.d("CDNTest", "shouldOverrideUrlLoading: $url (isDownload=${isDownloadUrl(url)})")
                 // 拦截文件下载链接
                 if ((scheme == "http" || scheme == "https") && isDownloadUrl(url)) {
                     showDownloadConfirm(url, guessDownloadMimeType(url))
@@ -180,6 +182,7 @@ class MainActivity : AppCompatActivity() {
 
         // 拦截所有下载请求，防止系统下载管理器劫持
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+            Log.d("CDNTest", "setDownloadListener: $url, mimeType=$mimeType, disposition=$contentDisposition")
             val fileName = guessFileName(url, contentDisposition, mimeType)
             showDownloadConfirm(url, mimeType)
         }
@@ -235,21 +238,29 @@ class MainActivity : AppCompatActivity() {
 
     private fun showDownloadConfirm(url: String, mimeType: String) {
         val fileName = Uri.parse(url).lastPathSegment ?: "download"
+        Log.d("CDNTest", "showDownloadConfirm: url=$url, fileName=$fileName, mimeType=$mimeType")
         
         lifecycleScope.launch {
-            val existingRecord = withContext(Dispatchers.IO) {
-                DownloadRecordStore.getByName(this@MainActivity, fileName)
-            }
-            
-            if (existingRecord != null && existingRecord.url != url) {
-                showFileConflictDialog(fileName, url, mimeType, existingRecord.url)
-            } else {
+            try {
+                val existingRecord = withContext(Dispatchers.IO) {
+                    DownloadRecordStore.getByName(this@MainActivity, fileName)
+                }
+                
+                Log.d("CDNTest", "existingRecord=${existingRecord?.url}")
+                if (existingRecord != null && existingRecord.url != url) {
+                    showFileConflictDialog(fileName, url, mimeType, existingRecord.url)
+                } else {
+                    startDownload(url, fileName, mimeType)
+                }
+            } catch (e: Exception) {
+                Log.e("CDNTest", "showDownloadConfirm error: ${e.message}", e)
                 startDownload(url, fileName, mimeType)
             }
         }
     }
     
     private fun showFileConflictDialog(fileName: String, newUrl: String, mimeType: String, existingUrl: String) {
+        Log.d("CDNTest", "showFileConflictDialog: fileName=$fileName, newUrl=$newUrl, existingUrl=$existingUrl")
         AlertDialog.Builder(this)
             .setTitle("文件名冲突")
             .setMessage("已存在同名文件 \"$fileName\"（来自不同链接）\n\n请选择操作：")
@@ -282,6 +293,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun startDownload(url: String, fileName: String, mimeType: String) {
+        Log.d("CDNTest", "startDownload: url=$url, fileName=$fileName")
         val destPath = DownloadHelper.getDownloadDir(this).absolutePath
         DownloadEngine.enqueue(this, url, fileName, destPath, mimeType)
         Toast.makeText(this, "已添加到下载管理", Toast.LENGTH_SHORT).show()
