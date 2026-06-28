@@ -7,8 +7,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.Request
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -62,30 +61,34 @@ object TsDownloader {
     }
 
     private fun downloadSegment(url: String): ByteArray {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 30000
-        conn.readTimeout = 30000
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-        conn.connect()
-        if (conn.responseCode !in 200..299) {
-            throw Exception("HTTP ${conn.responseCode}: $url")
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "Mozilla/5.0")
+            .build()
+
+        val response = HttpClient.client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            response.close()
+            throw Exception("HTTP ${response.code}: $url")
         }
-        val data = conn.inputStream.readBytes()
-        conn.disconnect()
+        val data = response.body?.bytes() ?: throw Exception("响应体为空")
+        response.close()
         return data
     }
 
     private fun fetchKey(keyUrl: String): ByteArray {
-        val conn = URL(keyUrl).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15000
-        conn.readTimeout = 15000
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-        conn.connect()
-        if (conn.responseCode !in 200..299) {
-            throw Exception("获取密钥失败: HTTP ${conn.responseCode}")
+        val request = Request.Builder()
+            .url(keyUrl)
+            .header("User-Agent", "Mozilla/5.0")
+            .build()
+
+        val response = HttpClient.client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            response.close()
+            throw Exception("获取密钥失败: HTTP ${response.code}")
         }
-        val key = conn.inputStream.readBytes()
-        conn.disconnect()
+        val key = response.body?.bytes() ?: throw Exception("密钥响应体为空")
+        response.close()
         return key
     }
 

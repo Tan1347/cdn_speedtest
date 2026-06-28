@@ -11,10 +11,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
+import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.Executors
 
 class SimpleDownloader(private val activity: Activity) {
@@ -32,23 +31,27 @@ class SimpleDownloader(private val activity: Activity) {
         AppLogger.i(activity, "Downloader", "开始下载: $fileName, URL: $url")
 
         executor.execute {
-            var conn: HttpURLConnection? = null
+            var response: okhttp3.Response? = null
             var file: File? = null
             try {
                 val downloadDir = DownloadHelper.getDownloadDir(activity)
                 file = File(downloadDir, fileName)
 
-                val urlObj = URL(url)
-                conn = urlObj.openConnection() as HttpURLConnection
-                conn.instanceFollowRedirects = true
-                conn.connectTimeout = 15000
-                conn.readTimeout = 15000
-                conn.connect()
+                val request = Request.Builder()
+                    .url(url)
+                    .build()
 
-                val totalSize = conn.contentLength.toLong()
+                response = HttpClient.client.newCall(request).execute()
+
+                if (!response.isSuccessful) {
+                    throw Exception("HTTP ${response.code}")
+                }
+
+                val body = response.body ?: throw Exception("响应体为空")
+                val totalSize = body.contentLength()
                 AppLogger.i(activity, "Downloader", "连接成功, 文件大小: ${totalSize / 1024 / 1024}MB, 保存: ${file.absolutePath}")
 
-                val input = conn.inputStream
+                val input = body.byteStream()
                 val output = FileOutputStream(file)
                 val buffer = ByteArray(8192)
                 var downloaded = 0L
@@ -101,7 +104,7 @@ class SimpleDownloader(private val activity: Activity) {
                     Toast.makeText(activity, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             } finally {
-                conn?.disconnect()
+                response?.close()
             }
         }
     }

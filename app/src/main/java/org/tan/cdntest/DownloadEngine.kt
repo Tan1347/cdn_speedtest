@@ -9,11 +9,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -44,8 +43,6 @@ interface DownloadListener {
 object DownloadEngine {
 
     private const val BUFFER_SIZE = 8192
-    private const val CONNECT_TIMEOUT = 15000
-    private const val READ_TIMEOUT = 30000
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tasks = ConcurrentHashMap<String, DownloadTask>()
@@ -355,30 +352,31 @@ object DownloadEngine {
 
         val existingBytes = if (destFile.exists()) destFile.length() else 0L
 
-        val conn = URL(task.url).openConnection() as HttpURLConnection
-        conn.connectTimeout = CONNECT_TIMEOUT
-        conn.readTimeout = READ_TIMEOUT
-        conn.setRequestProperty("User-Agent", UserAgentHelper.getCurrentUa(context))
+        val requestBuilder = Request.Builder()
+            .url(task.url)
+            .header("User-Agent", UserAgentHelper.getCurrentUa(context))
 
         if (existingBytes > 0) {
-            conn.setRequestProperty("Range", "bytes=$existingBytes-")
+            requestBuilder.header("Range", "bytes=$existingBytes-")
         }
 
-        conn.connect()
+        val request = requestBuilder.build()
+        val response = HttpClient.client.newCall(request).execute()
 
-        val responseCode = conn.responseCode
-        if (responseCode !in 200..299 && responseCode != 206) {
-            throw Exception("HTTP $responseCode")
+        if (!response.isSuccessful) {
+            response.close()
+            throw Exception("HTTP ${response.code}")
         }
 
-        val supportsRange = responseCode == 206
-        val contentLength = conn.contentLength.toLong()
+        val body = response.body ?: throw Exception("响应体为空")
+        val supportsRange = response.code == 206
+        val contentLength = body.contentLength()
 
         if (supportsRange) {
             task.totalBytes = existingBytes + contentLength
             task.downloadedBytes = existingBytes
         } else {
-            task.totalBytes = contentLength.toLong()
+            task.totalBytes = contentLength
             task.downloadedBytes = 0
         }
 
@@ -392,7 +390,7 @@ object DownloadEngine {
         var lastProgressTime = System.currentTimeMillis()
         var lastBytes = task.downloadedBytes
 
-        conn.inputStream.use { input ->
+        body.byteStream().use { input ->
             val output = outputStream ?: FileOutputStream(destFile, supportsRange && existingBytes > 0)
             output.use { out ->
                 while (true) {
@@ -427,7 +425,7 @@ object DownloadEngine {
         }
 
         outputStream?.close()
-        conn.disconnect()
+        response.close()
 
         if (task.status == DownloadStatus.CANCELLED) {
             if (destFile.exists()) destFile.delete()

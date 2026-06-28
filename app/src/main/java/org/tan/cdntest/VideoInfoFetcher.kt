@@ -7,8 +7,7 @@ import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.Request
 
 data class VideoInfo(
     val duration: Long,      // milliseconds
@@ -136,13 +135,14 @@ object VideoInfoFetcher {
         // Estimate size from first segment
         val estimatedSize = if (m3u8Info.segments.isNotEmpty()) {
             try {
-                val conn = URL(m3u8Info.segments[0].url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.requestMethod = "HEAD"
-                conn.connect()
-                val segSize = conn.contentLength.toLong()
-                conn.disconnect()
+                val request = Request.Builder()
+                    .url(m3u8Info.segments[0].url)
+                    .head()
+                    .build()
+
+                val response = HttpClient.client.newCall(request).execute()
+                val segSize = response.body?.contentLength() ?: 0
+                response.close()
                 if (segSize > 0) segSize * m3u8Info.segments.size else 0
             } catch (_: Exception) { 0 }
         } else 0
@@ -183,15 +183,15 @@ object VideoInfoFetcher {
 
     fun fetchFileSize(url: String): Long {
         return try {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-            conn.requestMethod = "HEAD"
-            conn.instanceFollowRedirects = true
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-            conn.connect()
-            val size = conn.contentLength.toLong()
-            conn.disconnect()
+            val request = Request.Builder()
+                .url(url)
+                .head()
+                .header("User-Agent", "Mozilla/5.0")
+                .build()
+
+            val response = HttpClient.client.newCall(request).execute()
+            val size = response.body?.contentLength() ?: 0
+            response.close()
             if (size > 0) size else 0
         } catch (_: Exception) { 0 }
     }
