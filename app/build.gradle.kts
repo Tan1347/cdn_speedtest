@@ -93,6 +93,13 @@ android {
 
 }
 
+android.applicationVariants.all {
+    outputs.all {
+        val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+        output.outputFileName = "cdntest_${versionName}.apk"
+    }
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
