@@ -55,6 +55,8 @@ class MainActivity : AppCompatActivity() {
         btnCert = findViewById(R.id.btnCert)
         etUrl = findViewById(R.id.etUrl)
 
+        Log.i("CDNTest", "=== MainActivity onCreate v1.3.1-debug ===")
+
         setupWebView()
         setupUrlInput()
         setupBottomNav()
